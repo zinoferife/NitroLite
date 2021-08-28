@@ -2,6 +2,8 @@
 #include "Database.h"
 nl::database_connection::database_connection()
 {
+	nl::vector_relation<int, int, int> vec_rel;
+
 }
 
 nl::database_connection::database_connection(const std::string_view& database_file)
