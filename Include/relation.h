@@ -1,6 +1,7 @@
 #pragma once
 #include "../pch.h"
 #include "tuple_loop.h"
+#include "relation_buffer.h"
 
 	/////////////////////////////////////////////////////////////
 	// relation represents a frame of data from the database
@@ -20,27 +21,7 @@
 		static_assert(i >= 0 && i < sizeof(col_names), "invalid index in get_col_name()"); return col_names[i]; }
 #define DEFINE_UNIQUE_ID() enum {unique_id = 0 };
 
-namespace nl {
-
-	template<size_t...I>
-	using select = std::index_sequence<I...>;
-
-	template<typename T>
-	using alloc_t = std::allocator<T>;
-
-	template<typename ty>
-	using hash_t = std::hash<ty>;
-
-	template<typename ty>
-	using key_comp_map_t = std::equal_to<ty>;
-
-	template<typename ty>
-	using key_comp_set_t = std::less<ty>;
-
-	struct linear_relation_tag {};
-	struct map_relation_tag {};
-
-
+namespace nl {	
 	template<class container> class relation;
 
 	template<template<class, class>typename container, typename... val>
@@ -58,13 +39,22 @@ namespace nl {
 		using container_t = container<std::tuple<val...>, alloc_t<std::tuple<val...>>>;
 		using tuple_t = typename container_t::value_type;
 		using container_tag = linear_relation_tag;
+		using relation_t = relation;
 
 
 		relation() = default;
-		relation(relation&) = default;
-		relation(relation&&) = default;
-		relation& operator=(relation&) = default;
-		relation& operator=(relation&&) = default;
+		explicit relation(size_t size) : container_t{ size } {}
+		relation(const relation& val) : container_t(val) {}
+		relation(const relation&& val) noexcept : container_t(std::move(val)) {};
+		relation& operator=(const relation& rhs)
+		{
+			container_t::operator=(rhs);
+		}
+		relation& operator=(const relation&& rhs) noexcept
+		{
+			container_t::operator=(std::move(rhs));
+		}
+
 		virtual ~relation() {}
 
 		auto insert(tuple_t& tuple)
@@ -80,7 +70,7 @@ namespace nl {
 			{
 				sum += std::get<I>(tuple);
 			}
-			return (sum / container_t::size());
+			return (sum / static_cast<double>(container_t::size()));
 		}
 
 		template<typename...T>
@@ -92,24 +82,129 @@ namespace nl {
 
 
 		template<size_t col>
-		inline typename std::tuple_element_t<col, tuple_t> get(size_t row)
+		inline const typename std::tuple_element_t<col, tuple_t>& get(size_t row) const
 		{
-			tuple_t& tuple = *(std::next(container_t::begin(), row));
-			return std::get<col>(tuple);
+			return std::get<col>(tuple_at(row));
 		}
 
 		template<size_t col>
-		tuple_t& find_on(typename std::tuple_element_t<col, tuple_t>& value)
+		inline void set(size_t row, const typename std::tuple_element_t<col, tuple_t>& value)
 		{
-			auto it = std::find_if(container_t::begin(), container_t::end(), [&](tuple_t& tuple) {
-				return(value == std::get<col>(tuple));
-			});
-			return(*it);
+			std::get<col>(tuple_at(row)) = std::forward<decltype(value)>(value);
 		}
 
-		static tuple_t make_rel_element(const val&... values)
+		template<size_t...I>
+		inline void set(size_t row, std::index_sequence<I...>, const typename std::tuple_element_t<I, tuple_t>& ... args)
 		{
-			return std::forward_as_tuple(values...);
+			std::forward_as_tuple(std::get<I>(tuple_at(row))...) = std::tie(args...);
+		}
+
+
+		template<size_t... I>
+		inline std::tuple<std::tuple_element_t<I, tuple_t>...>  get(size_t row, std::index_sequence<I...>) const
+		{
+			return std::make_tuple(std::get<I>(tuple_at(row))...);
+		}
+
+		template<size_t col>
+		tuple_t& find_on(const typename std::tuple_element_t<col, tuple_t>& value) const
+		{
+			auto it = std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
+				return(value == std::get<col>(tuple));
+				});
+			return(*it);
+		}
+		template<size_t I>
+		std::vector<relation_t> group_by()
+		{
+			order_by<I>();
+			std::vector<relation_t> ret_vec;
+			for (auto iter = container_t::begin(); iter != container_t::end();)
+			{
+				detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
+				auto upper_iter = std::upper_bound(iter, container_t::end(), std::get<I>(*iter), comp);
+				relation_t new_relation(std::distance(iter, upper_iter));
+				std::copy(iter, upper_iter, new_relation.begin());
+				iter = upper_iter;
+				ret_vec.push_back(std::move(new_relation));
+			}
+			return ret_vec;
+		}
+
+		//O(M+n) complexity in time
+		//O(n) complexity in memory
+		//assumes that both col I1 and I2 have unique elements
+
+		template<size_t I1, size_t I2, typename relation_t >
+		auto join_on(relation_t& rel)
+		{
+			static_assert(std::is_same_v<typename std::tuple_element_t<I1, tuple_t>, typename std::tuple_element_t<I2, typename relation_t::tuple_t>>, "Cannot join on column that are not same type");
+			using type = typename detail::join_tuple_type<tuple_t, typename relation_t::tuple_t>::type;
+			relation<container<type, alloc_t<type>>> new_relation;
+			std::unordered_map<std::tuple_element_t<I2, typename relation_t::tuple_t>, typename relation_t::iterator> find_map;
+			for (auto rel_iter = rel.begin(); rel_iter != rel.end(); rel_iter++)
+			{
+				find_map.insert(std::make_pair(std::get<I2>(*rel_iter), rel_iter));
+			}
+			for (auto this_iter = container_t::begin(); this_iter != container_t::end(); this_iter++)
+			{
+				auto find_iter = find_map.find(std::get<I1>(*this_iter));
+				if (find_iter != find_map.end())
+				{
+					new_relation.push_back(std::forward<type>(std::tuple_cat(*this_iter, *(find_iter->second))));;
+				}
+			}
+			return std::move(new_relation);
+		}
+
+		//removes all consequtive adjacent dublicates, sort first if you want to remove all dublicate 
+		//O(N) for the whole relation
+		template<size_t I>
+		void unique()
+		{
+			auto start = container_t::begin();
+			auto result = start;
+			while (++start != container_t::end())
+			{
+				if (!(std::get<I>(*result) == std::get<I>(*start)) && (std::get<I>(*(++result)) != std::get<I>(*start)))
+				{
+					*result = std::move(*start);
+				}
+			}
+			auto end = ++result;
+			container_t::erase(end, container_t::end());
+		}
+
+
+		template<size_t...I>
+		auto select()
+		{
+			using T = std::tuple<std::tuple_element_t<I, tuple_t>...>;
+			relation<container<T, alloc_t<T>>> new_relation;
+			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
+			{
+				new_relation.push_back(std::forward_as_tuple(std::get<I>(*iter)...));
+			}
+			return std::move(new_relation);
+		}
+
+		template<size_t I, typename order_by = order_asc<typename std::tuple_element_t<I, tuple_t>>>
+		void order_by()
+		{
+			detail::sort(*this, [&](tuple_t& l, tuple_t& r) {
+					return (order_by{}(std::get<I>(l), std::get<I>(r)));
+				});
+		}
+
+		static inline tuple_t make_rel_element(const val&... values)
+		{
+			return std::make_tuple(values...);
+		}
+
+	protected:
+		inline const tuple_t& tuple_at(size_t row) const
+		{
+			return *(std::next(container_t::begin(), row));
 		}
 	};
 
@@ -151,227 +246,13 @@ namespace nl {
 			{
 				sum += std::get<I>(tuple);
 			}
-			return (sum / container_t::size());
+			return (sum / static_cast<double>(container_t::size()));
 		}
-
 
 		static tuple_t make_rel_element(val... values)
 		{
 			return std::forward_as_tuple(values...);
 		}
 	};
-
-	template<typename...T>
-	using vector_relation = relation<std::vector<std::tuple<T...>>>;
-	template<typename...T>
-	using list_relation = relation<std::list<std::tuple<T...>>>;
-	template<typename...T>
-	using set_relation = relation<std::set<std::tuple<T...>>>;
-
-	namespace detail
-	{
-		//figure out a better way to do this
-		template <typename T> class is_relation { public:enum { value = false }; };
-		template<typename...T> class is_relation<vector_relation<T...>> { public:enum { value = true }; };
-		template<typename...T> class is_relation<vector_relation<T...>&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<vector_relation<T...>&&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const vector_relation<T...>> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const vector_relation<T...>&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const vector_relation<T...>&&> { public:enum { value = true }; };
-
-		template<typename...T> class is_relation<list_relation<T...>> { public:enum { value = true }; };
-		template<typename...T> class is_relation<list_relation<T...>&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<list_relation<T...>&&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const list_relation<T...>> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const list_relation<T...>&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const list_relation<T...>&&> { public:enum { value = true }; };
-
-
-		template<typename...T> class is_relation<set_relation<T...>> { public:enum { value = true }; };
-		template<typename...T> class is_relation<set_relation<T...>&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<set_relation<T...>&&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const set_relation<T...>> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const set_relation<T...>&> { public:enum { value = true }; };
-		template<typename...T> class is_relation<const set_relation<T...>&&> { public:enum { value = true }; };
-		template<typename T, typename base_relation> class is_derived_from_relation { public:enum { value = std::is_base_of_v<base_relation, T> }; };
-		template<typename T>
-		constexpr bool is_relation_v = is_relation<T>::value;
-
-		template<typename T>
-		struct is_linear_relation
-		{
-			enum {
-				value = std::is_same_v<typename T::container_tag, linear_relation_tag>
-			};
-		};
-
-		template<typename T>
-		struct is_map_relation
-		{
-			enum {
-				value = std::is_same_v<typename T::container_tag, map_relation_tag>
-			};
-		};
-		
-	}
-
-
-	template<typename relation>
-	class relation_buffer
-	{
-	public:
-		typedef relation relation_t;
-		typedef typename relation_t::value_type tuple_t;
-		typedef std::vector<std::uint8_t> buffer_t;
-
-		relation_buffer() {}
-		explicit relation_buffer(const size_t& size) : mBuffer{size} {
-		
-		}
-		
-		template<typename T, std::enable_if_t<std::is_same_v<T,std::string>, int> = 0>
-		inline relation_buffer& write(T & value)
-		{
-			write((static_cast<std::uint32_t>(value.size())));
-			std::copy(value.begin(), value.end(), std::back_insert_iterator<buffer_t>{mBuffer});
-			return (*this);
-		}
-
-		template<typename T, std::enable_if_t<std::is_same_v<T, std::vector<std::uint8_t>>, int> = 0>
-		inline relation_buffer& write(const T&value)
-		{
-			write((static_cast<std::uint32_t>(value.size())));
-			std::copy(value.begin(), value.end(), std::back_insert_iterator<buffer_t>{mBuffer});
-			return (*this);
-		}
-
-		template<typename T, std::enable_if_t<std::is_standard_layout_v<T> || std::is_pod_v<T>, int> = 0>
-		inline relation_buffer& write(const T& value)
-		{
-			constexpr size_t size = sizeof(T);
-			std::copy_n((buffer_t::value_type*)&value, size, std::back_insert_iterator<buffer_t>{mBuffer});
-			return (*this);
-		}
-
-		inline relation_buffer& write(...)
-		{
-			assert(false && "Cannot serilize the object too complex or not a sqlite fundamental type that should be in a relation");
-			return (*this);
-		}
-
-		template<typename T, std::enable_if_t<std::is_same_v<T, std::string>, int> = 0>
-		inline relation_buffer& read(T& value)
-		{
-			if (is_buffer_valid())
-			{
-				std::uint32_t size = 0;
-				read(size);
-				value.resize(size);
-				std::copy(cur_read_iter(), size_to_read(size), value.data());
-				mReadHead += size;
-			}
-			return (*this);
-		}
-
-		template<typename T, std::enable_if_t<std::is_same_v<T, std::vector<std::uint8_t>>, int> = 0>
-		inline relation_buffer & read(T& value)
-		{
-			if (is_buffer_valid())
-			{
-				std::uint32_t size = 0;
-				read(size);
-				value.resize(size);
-				std::copy(cur_read_iter(), size_to_read(size), value.data());
-				mReadHead += size;
-			}
-			return (*this);
-		}
-
-		template<typename T, std::enable_if_t<std::is_standard_layout_v<T> || std::is_pod_v<T>, int> = 0>
-		inline relation_buffer & read(T& value)
-		{
-			if (is_buffer_valid())
-			{
-				std::copy(cur_read_iter(), size_to_read(sizeof(T)), (buffer_t::value_type*)(&value));
-				mReadHead += sizeof(T);
-				return (*this);
-			}
-		}
-
-		inline relation_buffer& read(...)
-		{
-			assert(false && "Cannot read data into the object, object too complex or not a sqlite fundamental type that should be in a relation");
-			return (*this);
-		}
-
-
-		constexpr bool is_buffer_valid() const { 
-			//
-			assert(!mBuffer.empty() && "Reading from an empty buffer");
-			assert(mReadHead != mBuffer.size() && "Read head at end"); 
-#ifndef _DEBUG
-			if (mBuffer.empty() || mReadHead == mBuffer.size())
-			{
-				return false;
-			}
-#endif // !_DEBUG
-			return true;
-		}
-		~relation_buffer() { mReadHead = 0; mBuffer.clear(); }
-		inline const size_t get_buffer_size() const { return mBuffer.size(); }
-		inline const bool read_head_at_end() const { return mReadHead == mBuffer.size(); }
-		inline const buffer_t& get_buffer() const { return mBuffer; }
-	private:
-		inline buffer_t::const_iterator cur_read_iter() const { return std::next(mBuffer.begin(), mReadHead); }
-		inline buffer_t::const_iterator size_to_read(size_t size) { return std::next(cur_read_iter(), size); }
-	private:
-		buffer_t mBuffer{};
-		size_t mReadHead{ 0 };
-	};
-
-	template<typename relation_t, template<typename> typename buffer_t>
-	void read_buffer(relation_t& rel, buffer_t<relation_t>& buffer)
-	{
-		if constexpr (detail::is_relation_v<relation_t>)
-		{
-			try {
-				assert(rel.empty() && "Relation should be empty, overwrite of data already in the buffer");
-				std::insert_iterator<typename relation_t::container_t> insert(rel, rel.begin());
-				while (!buffer.read_head_at_end())
-				{
-					if constexpr (detail::is_linear_relation<relation_t>::value)
-					{
-						std::back_insert_iterator<typename relation_t::container_t> back_insert(rel);
-						back_insert = std::forward<typename relation_t::tuple_t>(detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
-					}
-					else if constexpr (detail::is_map_relation<relation_t>::value)
-					{
-						insert = std::forward<typename relation_t::tuple_t>(detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
-					}
-				}
-			}
-			catch (std::exception& ext)
-			{
-				std::string what = ext.what();
-			}
-		}
-	}
-
-	template<typename relation_t, template<typename> typename buffer_t>
-	void write_buffer(relation_t& rel, buffer_t<relation_t>& buffer)
-	{
-		if constexpr (detail::is_relation_v<relation_t>)
-		{
-			assert(!rel.empty() && "Cannot write buffer from empty relation");
-			for (auto& elem : rel)
-			{
-				auto& _elem = const_cast<std::remove_const_t<typename relation_t::container_t::value_type>&>(elem);
-				detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_write<relation_t, buffer_t>(buffer, _elem);
-
-			}
-		}
-	}
-
-
 };
 

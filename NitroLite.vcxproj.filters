@@ -36,6 +36,9 @@
     <ClInclude Include="Include\tuple_loop.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\relation_buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
