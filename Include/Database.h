@@ -34,6 +34,7 @@ namespace nl
 
 	class database_connection
 	{
+	//callbacks for sqlite
 	public:
 		typedef std::vector<sqlite3_stmt*> statements;
 		typedef statements::size_type statement_index;
@@ -44,27 +45,177 @@ namespace nl
 		typedef int(*busy_callback)(void* arg, int i);
 		typedef int(*progress_callback)(void* arg);
 		typedef int(*auth)(void* arg, int eventCode, const char* evt_1, const char* evt_2, const char* database_name, const char* tig_view_name);
+		
+		
+	public:
 		enum
 		{
 			BADSTMT = size_t(-1)
 		};
+
 		database_connection();
 		database_connection(const std::string_view& database_file);
+		database_connection(const database_connection&& connection) noexcept;
+		database_connection& operator=(const database_connection&&) noexcept;
+
 		~database_connection();
 
 		statement_index prepare_query(const std::string_view& query);
-		inline const statements& get_statement() const { return m_statements; }
+		
+		inline const statements& get_statements() const { return m_statements; }
+		inline const std::string& get_error_msg() const { return m_error_msg; }
+		void remove_statement(nl::database_connection::statement_index index);
+		bool is_open() const { return (m_database_conn != nullptr); }
 
+
+	public:
+		bool set_commit_handler(commit_callback callback, void* UserData);
+		bool set_trace_handler(trace_callback callback, std::uint32_t mask, void* UserData);
+		bool set_busy_handler(busy_callback callback, void* UserData);
+		bool set_auth_handler(auth callback, void* UserData);
+		void set_progress_handler(progress_callback callback, void* UserData, int frq);
+		bool register_extension(const sql_extension_func_aggregate& ext);
+
+	
+	template<typename relation>
+	relation retrive(statement_index index)
+	{
+		return do_query_retrive<relation>(index);
+	}
+
+	template<typename relation>
+	bool insert(statement_index index, const relation& rel)
+	{
+		return do_query_insert(index, rel);
+	}
+
+	template<typename relation, typename...T>
+	bool insert_params(statement_index index, const relation& rel ,T... args)
+	{
+		return do_query_insert_para(index, rel, args...);
+	}
+
+
+	//template functions
+	public:
 		template<typename relation>
-		relation do_query(statement_index& index)
+		relation do_query_retrive(statement_index index)
 		{
-			
+			assert(index < m_statements.size() && "Invalid statement index");
+			statements::reference statement = m_statements[index];
+			if (statement)
+			{
+				relation rel;
+				std::insert_iterator<typename relation::container_t> insert(rel, rel.begin());
+				constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> -1;
+				while ((sqlite3_step(statement) == SQLITE_ROW))
+				{
+					if constexpr(nl::detail::is_map_relation<relation>::value)
+					{
+						insert = nl::detail::loop<size>::template do_retrive< typename relation::tuple_t>(statement);
+					}
+					else if constexpr (nl::detail::is_linear_relation<relation>::value)
+					{
+						std::back_insert_iterator<typename relation::container_t> back_insert(rel);
+						back_insert = nl::detail::loop<size>::template do_retrive<typename relation::tuple_t>(statement);
+					}
+				}
+				if (sqlite3_errcode(m_database_conn) == SQLITE_DONE)
+				{
+					if (sqlite3_reset(statement) == SQLITE_SCHEMA) {
+						m_error_msg = sqlite3_errmsg(m_database_conn);
+						return relation{};
+					}
+					return std::move(rel);
+				}
+			}
+			m_error_msg = sqlite3_errmsg(m_database_conn);
+			sqlite3_reset(statement);
+			return relation{};
 		}
 
-	private:
-		sqlite3* m_database_conn;
-		statements m_statements;
+		template<typename relation>
+		bool do_query_insert(statement_index index, const relation& rel)
+		{
+			assert(index < m_statements.size() && "Invalid statement index");
+			statements::reference statement = m_statements[index];
+			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> -1;
+			for (auto& tuple : rel)
+			{
+				if (!nl::detail::loop<size>::do_insert(statement, tuple))
+				{
+					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+					return false;
+				}
+			}
+			if (sqlite3_step(statement) == SQLITE_DONE)
+			{
+				if (sqlite3_reset(statement) == SQLITE_SCHEMA)
+				{
+					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+					return false;
+				}
+				return true;
+			}
+			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+			return false;
+		}
 
+		template<typename relation, typename S,  typename... T>
+		bool do_query_insert_para(statement_index index, const relation& rel,const S& start , const T&...args)
+		{
+			assert(index < m_statements.size() && "Invalid statement index");
+			const std::array<const S, sizeof...(T) + 1> parameters{start, args...};
+			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
+			statements::reference statement = m_statements[index];
+			for (auto& tuple : rel)
+			{
+				if (!nl::detail::loop<size>::do_insert_para(statement, tuple, parameters))
+				{
+					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+					return false;
+				}
+				if (sqlite3_step(statement) == SQLITE_DONE)
+				{
+					if (sqlite3_reset(statement) == SQLITE_SCHEMA)
+					{
+						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+						return false;
+					}
+					continue;
+				}
+				else
+				{
+					break;
+				}
+			}
+			if (sqlite3_errcode(m_database_conn) == SQLITE_ERROR)
+			{
+				m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+				return false;
+			}
+			return true;
+		}
+
+
+
+
+		bool do_query(statement_index index);
+	
+		
+	
+	
+	private:
+		//cannot copy or assign a database connection, every created on is a new connection, 
+		//a database connection is a resource that is usually only one in a thread
+		database_connection(const database_connection&) = delete;
+		database_connection& operator=(const database_connection&) = delete;
+		
+
+
+		sqlite3* m_database_conn{nullptr};
+		statements m_statements{};
+		std::string m_error_msg{};
 	};
 
 

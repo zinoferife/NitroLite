@@ -196,6 +196,14 @@ namespace nl {
 				});
 		}
 
+		template<typename...T>
+		void unpack_row_in(size_t row, T& ...args)
+		{
+			if (container_t::empty()) return;
+			std::tie(args...) = tuple_at(row);
+		}
+
+
 		static inline tuple_t make_rel_element(const val&... values)
 		{
 			return std::make_tuple(values...);

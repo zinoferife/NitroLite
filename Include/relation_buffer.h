@@ -58,7 +58,7 @@ namespace nl
 			assert(false && "Cannot serilize the object too complex or not a sqlite fundamental type that should be in a relation");
 			return (*this);
 		}
-
+		//TODO: handle reading different formats of strings
 		template<typename T, std::enable_if_t<std::is_same_v<T, std::string>, int> = 0>
 		inline relation_buffer & read(T & value)
 		{
@@ -154,7 +154,6 @@ namespace nl
 	{
 		if constexpr (detail::has_base_relation<relation_t, typename relation_t::relation_t>::value || detail::is_relation_v<relation_t>)
 		{
-			try {
 				assert(rel.empty() && "Relation should be empty, overwrite of data already in the buffer");
 				std::insert_iterator<typename relation_t::container_t> insert(rel, rel.begin());
 				while (!buffer.read_head_at_end())
@@ -169,11 +168,7 @@ namespace nl
 						insert = std::forward<typename relation_t::tuple_t>(detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
 					}
 				}
-			}
-			catch (std::exception& ext)
-			{
-				std::string what = ext.what();
-			}
+			
 		}
 	}
 	template<typename relation_t, template<typename> typename buffer_t>
