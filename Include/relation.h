@@ -21,14 +21,22 @@
 		static_assert(i >= 0 && i < sizeof(col_names), "invalid index in get_col_name()"); return col_names[i]; }
 #define DEFINE_UNIQUE_ID() enum {unique_id = 0 };
 
-namespace nl {	
+namespace nl {
 	template<class container> class relation;
 
-	template<template<class, class>typename container, typename... val>
-	class relation<container<std::tuple<val...>, alloc_t<std::tuple<val...> > > > : public container<std::tuple<val...>, alloc_t<std::tuple<val...>>>
+	class base_relation
 	{
 	public:
+		virtual ~base_relation() {}
+	};
 
+
+	template<template<class, class>typename container, 
+		typename... val>
+	class relation<container<std::tuple<val...>, alloc_t<std::tuple<val...> > > > : 
+		public container<std::tuple<val...>, alloc_t<std::tuple<val...>>>, public base_relation
+	{
+	public:
 		enum rel_constants
 		{
 			unique_id = 0,
@@ -49,10 +57,12 @@ namespace nl {
 		relation& operator=(const relation& rhs)
 		{
 			container_t::operator=(rhs);
+			return (*this);
 		}
 		relation& operator=(const relation&& rhs) noexcept
 		{
 			container_t::operator=(std::move(rhs));
+			return (*this);
 		}
 
 		virtual ~relation() {}
@@ -115,12 +125,10 @@ namespace nl {
 			return(*it);
 		}
 		template<size_t I>
-		std::vector<relation_t> group_by()
-		{
+		std::vector<relation_t> group_by(){
 			order_by<I>();
 			std::vector<relation_t> ret_vec;
-			for (auto iter = container_t::begin(); iter != container_t::end();)
-			{
+			for (auto iter = container_t::begin(); iter != container_t::end();){
 				detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 				auto upper_iter = std::upper_bound(iter, container_t::end(), std::get<I>(*iter), comp);
 				relation_t new_relation(std::distance(iter, upper_iter));
@@ -142,15 +150,12 @@ namespace nl {
 			using type = typename detail::join_tuple_type<tuple_t, typename relation_t::tuple_t>::type;
 			relation<container<type, alloc_t<type>>> new_relation;
 			std::unordered_map<std::tuple_element_t<I2, typename relation_t::tuple_t>, typename relation_t::iterator> find_map;
-			for (auto rel_iter = rel.begin(); rel_iter != rel.end(); rel_iter++)
-			{
+			for (auto rel_iter = rel.begin(); rel_iter != rel.end(); rel_iter++)	{
 				find_map.insert(std::make_pair(std::get<I2>(*rel_iter), rel_iter));
 			}
-			for (auto this_iter = container_t::begin(); this_iter != container_t::end(); this_iter++)
-			{
+			for (auto this_iter = container_t::begin(); this_iter != container_t::end(); this_iter++){
 				auto find_iter = find_map.find(std::get<I1>(*this_iter));
-				if (find_iter != find_map.end())
-				{
+				if (find_iter != find_map.end()){
 					new_relation.push_back(std::forward<type>(std::tuple_cat(*this_iter, *(find_iter->second))));;
 				}
 			}
@@ -160,14 +165,11 @@ namespace nl {
 		//removes all consequtive adjacent dublicates, sort first if you want to remove all dublicate 
 		//O(N) for the whole relation
 		template<size_t I>
-		void unique()
-		{
+		void unique(){
 			auto start = container_t::begin();
 			auto result = start;
-			while (++start != container_t::end())
-			{
-				if (!(std::get<I>(*result) == std::get<I>(*start)) && (std::get<I>(*(++result)) != std::get<I>(*start)))
-				{
+			while (++start != container_t::end()){
+				if (!(std::get<I>(*result) == std::get<I>(*start)) && (std::get<I>(*(++result)) != std::get<I>(*start))){
 					*result = std::move(*start);
 				}
 			}
@@ -177,8 +179,7 @@ namespace nl {
 
 
 		template<size_t...I>
-		auto select()
-		{
+		auto select(){
 			using T = std::tuple<std::tuple_element_t<I, tuple_t>...>;
 			relation<container<T, alloc_t<T>>> new_relation;
 			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
@@ -189,29 +190,24 @@ namespace nl {
 		}
 
 		template<size_t I, typename order_by = order_asc<typename std::tuple_element_t<I, tuple_t>>>
-		void order_by()
-		{
+		void order_by(){
 			detail::sort(*this, [&](tuple_t& l, tuple_t& r) {
 					return (order_by{}(std::get<I>(l), std::get<I>(r)));
 				});
 		}
 
 		template<typename...T>
-		void unpack_row_in(size_t row, T& ...args)
-		{
+		void unpack_row_in(size_t row, T& ...args){
 			if (container_t::empty()) return;
 			std::tie(args...) = tuple_at(row);
 		}
 
-
-		static inline tuple_t make_rel_element(const val&... values)
-		{
+		static inline tuple_t make_rel_element(const val&... values){
 			return std::make_tuple(values...);
 		}
 
 	protected:
-		inline const tuple_t& tuple_at(size_t row) const
-		{
+		inline const tuple_t& tuple_at(size_t row) const{
 			return *(std::next(container_t::begin(), row));
 		}
 	};

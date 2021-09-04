@@ -39,12 +39,21 @@
     <ClInclude Include="Include\relation_buffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\query.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Manager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Include\Database.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Include\query.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

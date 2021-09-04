@@ -47,6 +47,7 @@ namespace nl
 
 	using blob_t = std::vector<std::uint8_t>;
 
+
 	namespace detail
 	{
 		//sqlite only wants 5 types: integral, floating_point, string, blob and null
@@ -79,6 +80,16 @@ namespace nl
 		public:
 			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || index_of<special_types, T>::value >= 0) };
 		};
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -410,52 +421,47 @@ namespace nl
 		};
 
 		template<class T>
-		class is_converatable_to_relation<T,T>
-		{
+		class is_converatable_to_relation<T,T>{
 		public:
 			enum {exisit = 1, same_type = 1};
 		};
 
 		template<typename R, typename T>
-		struct _derived_from_relation
-		{
+		struct _derived_from_relation{
 			enum
 			{
 				value = (is_converatable_to_relation<const std::decay_t<T>*, const std::decay_t<R>*>::exisit && !is_converatable_to_relation<const std::decay_t<R>*, void*>::same_type)
 			};
 		};
+		template<typename T> class has_base_relation { 
+			public: 
+				enum { value = _derived_from_relation<base_relation, T>::value}; 
+		};
 
 
-		//figure out a better way to do this
-		template <typename T> class _is_relation { public:enum { value = false }; };
+		//figure out a better way to do this.. lol i relaised that this is way better, this "is_convertible_v" was not here before
+		//i just learnt it, but i am so proud of the other ones i wrote up with andrei's loki libary implementation that i dont want to remove it
+		template <typename T> class _is_relation { public:enum { value = std::is_convertible_v<T, base_relation> }; };
+		template<typename T>
+		using is_relation = _is_relation<std::decay_t<T>>;
+		template<typename T>
+		constexpr bool is_relation_v = is_relation<T>::value;
+
+
+		//redundant?? yes but i am keeping it
 		template<typename...T> class _is_relation<vector_relation<T...>> { public:enum { value = true }; };
 		template<typename...T> class _is_relation<list_relation<T...>> { public:enum { value = true }; };
 		template<typename...T> class _is_relation<set_relation<T...>> { public:enum { value = true }; };
 
-	
-		template<typename T, typename relation> class has_base_relation { 
-			public: 
-				enum { value = _derived_from_relation<relation, T>::value}; 
-		};
-		
-
 		template<typename T>
-		using is_relation = _is_relation<std::decay_t<T>>;
-
-		template<typename T>
-		constexpr bool is_relation_v = is_relation<T>::value;
-
-		template<typename T>
-		struct is_linear_relation
-		{
+		struct is_linear_relation{
 			enum {
 				value = std::is_same_v<typename T::container_tag, linear_relation_tag>
 			};
 		};
 
 		template<typename T>
-		struct is_map_relation
-		{
+		struct is_map_relation{
 			enum {
 				value = std::is_same_v<typename T::container_tag, map_relation_tag>
 			};

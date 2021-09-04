@@ -164,6 +164,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Include\Database.h" />
+    <ClInclude Include="Include\Manager.h" />
+    <ClInclude Include="Include\query.h" />
     <ClInclude Include="Include\relation.h" />
     <ClInclude Include="Include\relation_buffer.h" />
     <ClInclude Include="Include\Singleton.h" />
@@ -174,6 +176,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Include\Database.cpp" />
+    <ClCompile Include="Include\query.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

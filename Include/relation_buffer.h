@@ -152,7 +152,7 @@ namespace nl
 	template<typename relation_t, template<typename> typename buffer_t>
 	void read_buffer(relation_t& rel, buffer_t<relation_t>& buffer)
 	{
-		if constexpr (detail::has_base_relation<relation_t, typename relation_t::relation_t>::value || detail::is_relation_v<relation_t>)
+		if constexpr (detail::has_base_relation<relation_t>::value || detail::is_relation_v<relation_t>)
 		{
 				assert(rel.empty() && "Relation should be empty, overwrite of data already in the buffer");
 				std::insert_iterator<typename relation_t::container_t> insert(rel, rel.begin());
@@ -174,7 +174,7 @@ namespace nl
 	template<typename relation_t, template<typename> typename buffer_t>
 	void write_buffer(relation_t& rel, buffer_t<relation_t>& buffer)
 	{
-		if constexpr (detail::has_base_relation<relation_t, typename relation_t::relation_t>::value || detail::is_relation_v<relation_t>)
+		if constexpr (detail::has_base_relation<relation_t>::value || detail::is_relation_v<relation_t>)
 		{
 			assert(!rel.empty() && "Cannot write buffer from empty relation");
 			for (auto& elem : rel)

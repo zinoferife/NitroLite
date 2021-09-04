@@ -18,6 +18,13 @@ nl::database_connection::database_connection(const std::string_view& database_fi
 			throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE");
 		}
 	}
+	//create a begin, begin_immediate, end and rollback statments, 0, 1, 2 and 3 in the m_statments table
+	query q;
+	prepare_query(q.begin());
+	prepare_query(q.clear().begin_immediate());
+	prepare_query(q.clear().end());
+	prepare_query(q.clear().roll_back());
+
 }
 
 nl::database_connection::database_connection(const database_connection&& connection) noexcept
@@ -44,15 +51,20 @@ nl::database_connection& nl::database_connection::operator=(const database_conne
 
 nl::database_connection::~database_connection()
 {
+	if (!m_statements.empty()) {
+		for (auto& stmt : m_statements){
+			sqlite3_finalize(stmt);
+		}
+	}
 	if (m_database_conn){
 		sqlite3_close(m_database_conn);
 	}
 }
 
-nl::database_connection::statement_index nl::database_connection::prepare_query(const std::string_view& query)
+nl::database_connection::statement_index nl::database_connection::prepare_query(const std::string& query)
 {
 	assert(!query.empty() && "Prepare query is empty");
-	if (!sqlite3_complete(query.data())){
+	if (!sqlite3_complete(query.c_str())){
 		m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 		return BADSTMT;
 	}
@@ -64,6 +76,11 @@ nl::database_connection::statement_index nl::database_connection::prepare_query(
 	m_statements.pop_back();
 	m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 	return BADSTMT;
+}
+
+nl::database_connection::statement_index nl::database_connection::prepare_query(const nl::query& query)
+{
+	return prepare_query(query.get_query());
 }
 
 void nl::database_connection::remove_statement(nl::database_connection::statement_index index)
