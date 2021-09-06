@@ -33,7 +33,10 @@ namespace nl
 	template< typename container>
 	class relation;
 	struct linear_relation_tag;
+	struct set_relation_tag;
+	struct hash_relation_tag;
 	struct map_relation_tag;
+
 
 	template<typename...T>
 	using vector_relation = relation<std::vector<std::tuple<T...>>>;
@@ -442,6 +445,7 @@ namespace nl
 		template<typename...T> class _is_relation<list_relation<T...>> { public:enum { value = true }; };
 		template<typename...T> class _is_relation<set_relation<T...>> { public:enum { value = true }; };
 
+
 		template<typename T>
 		struct is_linear_relation{
 			enum {
@@ -453,6 +457,22 @@ namespace nl
 		struct is_map_relation{
 			enum {
 				value = std::is_same_v<typename T::container_tag, map_relation_tag>
+			};
+		};
+
+		template<typename T>
+		struct is_hash_relation
+		{
+			enum {
+				value = std::is_same_v<typename T::container_tag, hash_relation_tag>
+			};
+		};
+
+		template<typename T>
+		struct is_set_relation
+		{
+			enum {
+				value = std::is_same_v<typename T::container_tag, set_relation_tag>
 			};
 		};
 	}

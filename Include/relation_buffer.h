@@ -161,11 +161,11 @@ namespace nl
 					if constexpr (detail::is_linear_relation<relation_t>::value)
 					{
 						std::back_insert_iterator<typename relation_t::container_t> back_insert(rel);
-						back_insert = std::forward<typename relation_t::tuple_t>(detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
+						back_insert = std::forward<typename relation_t::tuple_t>(detail::loop<relation_t::column_count -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
 					}
 					else if constexpr (detail::is_map_relation<relation_t>::value)
 					{
-						insert = std::forward<typename relation_t::tuple_t>(detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
+						insert = std::forward<typename relation_t::tuple_t>(detail::loop<relation_t::column_count- 1>::template do_buffer_read<relation_t, buffer_t>(buffer));
 					}
 				}
 			
@@ -180,7 +180,7 @@ namespace nl
 			for (auto& elem : rel)
 			{
 				auto& _elem = const_cast<std::remove_const_t<typename relation_t::container_t::value_type>&>(elem);
-				detail::loop<std::tuple_size_v<typename relation_t::tuple_t> -1>::template do_buffer_write<relation_t, buffer_t>(buffer, _elem);
+				detail::loop<relation_t::column_count -1>::template do_buffer_write<relation_t, buffer_t>(buffer, _elem);
 
 			}
 		}

@@ -68,6 +68,9 @@ namespace nl {
 		}
 
 		virtual ~relation() {}
+		constexpr static size_t column_count = std::tuple_size_v<tuple_t>;
+
+
 
 		auto insert(tuple_t& tuple)
 		{
@@ -88,7 +91,7 @@ namespace nl {
 		template<typename...T>
 		void add(T&& ... args)
 		{
-			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add_to_relation");
+			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add");
 			container_t::emplace_back(tuple_t(std::forward<T>(args)...));
 		}
 
@@ -204,8 +207,55 @@ namespace nl {
 			std::tie(args...) = tuple_at(row);
 		}
 
+		template<size_t I, typename...Args>
+		void add_in_order(Args... args)
+		{
+			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add_in_order");
+			tuple_t tuple = std::tie(args...);
+			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
+			auto iter = std::lower_bound(container_t::begin(), container_t::end(),std::get<I>(tuple), comp);
+			if (iter != container_t::end()){
+				container_t::insert(iter, std::move(tuple));
+			}
+			else {
+				//greater than the last element
+				container_t::push_back(std::move(tuple));
+			}
+		}
+
 		static inline tuple_t make_rel_element(const val&... values){
 			return std::make_tuple(values...);
+		}
+
+		//assumes that both are it is sorted
+		void merge(relation_t& rel)
+		{
+			relation_t ret(container_t::size() + rel.size());
+			std::merge(container_t::begin(), container_t::end(), rel.begin(), rel.end(), ret.begin());
+			(*this) = std::move(ret);
+		}
+
+		bool is_sub_relation(relation_t& rel)
+		{
+			return std::includes(container_t::begin(), container_t::end(), rel.begin(), rel.end());
+		}
+		
+		template<size_t I>
+		auto min_max_on()
+		{
+			return std::minmax_element(container_t::begin(), container_t::end(), [&](tuple_t& lhs, tuple_t& rhs) {
+				return std::get<I>(lhs) < std::get<I>(rhs);
+				});
+		}
+
+
+		template<size_t I, typename Pred>
+		void remove_on_if(Pred pred)
+		{
+			auto it = std::remove_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple)-> bool{
+				return pred(std::get<I>(tuple));
+			});
+			container_t::erase(it, container_t::end());
 		}
 
 	protected:
@@ -262,7 +312,7 @@ namespace nl {
 		template<typename...T>
 		void add(const T&& ... args)
 		{
-			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add_to_relation");
+			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add");
 			container_t::insert(tuple_t((args)...));
 		}
 
@@ -307,6 +357,19 @@ namespace nl {
 
 		}
 
+
+		void merge(relation_t& rel)
+		{
+			relation_t result(container_t::size() + rel.size());
+			std::set_union(container_t::begin(), container_t::end(), rel.begin(), rel.end(), result.begin());
+			(*this) = std::move(result);
+		}
+
+
+		bool is_sub_relation(relation_t& rel)
+		{
+			return std::includes(container_t::begin(), container_t::end(), rel.begin(), rel.end());
+		}
 
 	private:
 		typename container_t::iterator tuple_at(const tuple_t& key)
