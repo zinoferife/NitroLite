@@ -298,6 +298,16 @@ namespace nl {
 				}
 				return std::move(rel);
 		}
+
+		template<size_t I, size_t J, typename rel>
+		auto join_on(rel& set_rel)
+		{
+			using type = typename detail::join_tuple_type<tuple_t, typename rel::tuple_t>::type;
+			relation<container<type, key_comp_set_t<type>, alloc_t<type>>> new_relation;
+
+		}
+
+
 	private:
 		typename container_t::iterator tuple_at(const tuple_t& key)
 		{

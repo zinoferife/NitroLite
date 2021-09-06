@@ -455,6 +455,5 @@ namespace nl
 				value = std::is_same_v<typename T::container_tag, map_relation_tag>
 			};
 		};
-
 	}
 }
