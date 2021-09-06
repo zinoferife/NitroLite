@@ -82,17 +82,6 @@ namespace nl
 		};
 
 
-
-
-
-
-
-
-
-
-
-
-
 		template<size_t count, typename database_stmt, typename tuple_t>
 		inline bool handle(database_stmt statement, const tuple_t& tuple)
 		{
@@ -466,7 +455,6 @@ namespace nl
 				value = std::is_same_v<typename T::container_tag, map_relation_tag>
 			};
 		};
-
 
 	}
 }

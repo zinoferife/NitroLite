@@ -86,7 +86,7 @@ namespace nl {
 		}
 
 		template<typename...T>
-		void add_to_relation(T&& ... args)
+		void add(T&& ... args)
 		{
 			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add_to_relation");
 			container_t::emplace_back(tuple_t(std::forward<T>(args)...));
@@ -214,33 +214,56 @@ namespace nl {
 		}
 	};
 
+
+
+
+	//set relation
 	template<template<class, class, class>typename container, typename... val>
 	class relation<container<std::tuple<val...>, key_comp_set_t<std::tuple<val...>>, alloc_t<std::tuple<val...>> >> : public container<std::tuple<val...>, key_comp_set_t<std::tuple<val...>>, alloc_t<std::tuple<val...>>>
 	{
 
 	public:
+		
 
 		using container_t = container<std::tuple<val...>, key_comp_set_t<std::tuple<val...>>, alloc_t<std::tuple<val...>>>;
 		using tuple_t = typename container_t::value_type;
 		using container_tag = map_relation_tag;
+		using compare_t = typename container_t::key_compare;
+		using relation_t = relation;
+
+
+
+		template<size_t I>
+		using elem_t = std::tuple_element_t<I, tuple_t>;
 
 		relation() = default;
-		relation(relation&) = default;
-		relation(relation&&) = default;
-		relation& operator=(relation&) = default;
-		relation& operator=(relation&&) = default;
+		explicit relation(size_t size) : container_t{ size } {}
+		relation(const relation& val) : container_t(val) {}
+		relation(const relation&& val) noexcept : container_t(std::move(val)) {};
+		relation& operator=(const relation& rhs)
+		{
+			container_t::operator=(rhs);
+			return (*this);
+		}
+		relation& operator=(const relation&& rhs) noexcept
+		{
+			container_t::operator=(std::move(rhs));
+			return (*this);
+		}
+
 		virtual ~relation() {}
 
-		auto insert(tuple_t tuple)
+
+		auto insert(const tuple_t& tuple)
 		{
-			return container_t::insert(tuple);
+			return container_t::insert(std::move(tuple));
 		}
 
 		template<typename...T>
-		void add_to_relation(T&& ... args)
+		void add(const T&& ... args)
 		{
 			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add_to_relation");
-			container_t::insert(tuple_t(std::forward<T>(args)...));
+			container_t::insert(tuple_t((args)...));
 		}
 
 
@@ -259,6 +282,29 @@ namespace nl {
 		{
 			return std::forward_as_tuple(values...);
 		}
+
+		template<size_t I>
+		auto group_by() -> std::vector<relation_t>
+		{
+				std::unordered_map<elem_t<I>, relation_t> sort_map{};
+				for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
+				{
+					sort_map[std::get<I>(*iter)].insert(*iter);
+				}
+				std::vector<relation_t> rel;
+				for (auto iter_map = sort_map.begin(); iter_map != sort_map.end(); iter_map++)
+				{
+					rel.push_back(std::move(iter_map->second));
+				}
+				return std::move(rel);
+		}
+	private:
+		typename container_t::iterator tuple_at(const tuple_t& key)
+		{
+			return container_t::find(key);
+		}
+
+
 	};
 };
 
