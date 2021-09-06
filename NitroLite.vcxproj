@@ -169,6 +169,7 @@
     <ClInclude Include="Include\relation.h" />
     <ClInclude Include="Include\relation_buffer.h" />
     <ClInclude Include="Include\Singleton.h" />
+    <ClInclude Include="Include\table.h" />
     <ClInclude Include="Include\tuple_loop.h" />
     <ClInclude Include="Include\Visitor.h" />
     <ClInclude Include="nl_visitor.h" />

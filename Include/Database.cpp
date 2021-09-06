@@ -121,7 +121,21 @@ bool nl::database_connection::register_extension(const sql_extension_func_aggreg
 		ext.fUserData, ext.fFunc, ext.fStep, ext.fFinal) == SQLITE_OK);
 }
 
-bool nl::database_connection::do_query(statement_index index)
+bool nl::database_connection::exec_once(statement_index index)
 {
-	return false;
+	assert(index < m_statements.size() && "Invalid statement index");
+	statements::reference statement = m_statements[index];
+	if (statement)
+	{
+		if (sqlite3_step(statement) == SQLITE_DONE){
+			if (sqlite3_reset(statement) == SQLITE_SCHEMA) {
+				m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+				return false;
+			}
+			return true;
+		}
+		m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+		return false;
+	}
 }
+

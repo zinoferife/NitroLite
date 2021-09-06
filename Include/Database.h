@@ -116,6 +116,7 @@ namespace nl
 			return do_query_insert_para(index, rel, args...);
 		}
 
+		bool exec_once(statement_index index);
 
 	//template functions
 	private:
@@ -257,7 +258,6 @@ namespace nl
 
 
 
-		bool do_query(statement_index index);
 	
 		
 	

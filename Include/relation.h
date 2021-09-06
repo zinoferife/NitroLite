@@ -49,6 +49,8 @@ namespace nl {
 		using container_tag = linear_relation_tag;
 		using relation_t = relation;
 
+		template<size_t I>
+		using elem_t = std::tuple_element_t<I, tuple_t>;
 
 		relation() = default;
 		explicit relation(size_t size) : container_t{ size } {}

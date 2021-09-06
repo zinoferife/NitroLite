@@ -27,7 +27,7 @@ namespace nl
 	struct primary_key {
 		enum { value = 4 };
 	};
-	struct no_op {
+	struct no_policy {
 		enum { value = -1 };
 	};
 
@@ -66,7 +66,7 @@ namespace nl
 				mQuery << "NOT NULL ";
 			}
 
-			template<typename _policy, std::enable_if_t<std::is_same_v<_policy, no_op>, int> = 0>
+			template<typename _policy, std::enable_if_t<std::is_same_v<_policy, no_policy>, int> = 0>
 			inline void add_policy(std::stringstream & mQuery)
 			{
 				return;
