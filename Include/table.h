@@ -15,17 +15,19 @@ namespace nl
 		//0 is reserved for the table name
 		using name_array = std::array<name_t, std::tuple_size_v<typename vector_relation<args...>::tuple_t> + 1>;
 		
+
+		vector_table() {}
+		//vector_table(size_t size) : vector_relation<args...>{ size } {}
 		virtual ~vector_table() {}
 
 
-
 		template<size_t I>
-		void as(const std::string&& name)
+		inline void as(const std::string&& name)
 		{
 			names[I + 1] = name;
 		}
 
-		void as(size_t I, const std::string&& name)
+		inline void as(size_t I, const std::string&& name)
 		{
 			names[I + 1] = name;
 		}
@@ -41,28 +43,28 @@ namespace nl
 			}
 		}
 
-		void table_name(const std::string&& name)
+		inline void table_name(const std::string&& name)
 		{
 			names[0] = name;
 		}
 
-		constexpr const name_t& get_table_name() const
+		inline constexpr const name_t& get_table_name() const
 		{
 			return names[0];
 		}
 
 		template<size_t I>
-		constexpr const name_t& get_name() const
+		inline constexpr const name_t& get_name() const
 		{
 			return names[I + 1];
 		}
 
-		const name_t& get_name(size_t i) const
+		inline const name_t& get_name(size_t i) const
 		{
 			return names[i + 1];
 		}
 
-		const name_array& get_names() const
+		inline const name_array& get_names() const
 		{
 			return names;
 		}

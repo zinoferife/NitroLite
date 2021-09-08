@@ -28,4 +28,5 @@
 #include <iterator>
 #include <thread>
 #include <mutex>
+#include <execution>
 #endif //PCH_H

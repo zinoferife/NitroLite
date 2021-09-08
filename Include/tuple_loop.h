@@ -6,7 +6,19 @@ namespace nl
 {
 	template<size_t...I>
 	using select = std::index_sequence<I...>;
+	template<typename relation>
+	using select_all = std::make_index_sequence<relation::column_count>;
 
+	template<size_t I, typename row_t>
+	inline auto row_value(const row_t& tuple)
+	{
+		return std::get<I>(tuple);
+	}
+	template<size_t I, typename row_t>
+	inline auto& row_value(row_t& tuple)
+	{
+		return std::get<I>(tuple);
+	}
 	template<typename T>
 	using alloc_t = std::allocator<T>;
 
@@ -322,6 +334,19 @@ namespace nl
 				return std::tuple_cat(std::move(t), std::move(t2));
 			}
 
+
+			//runs a function for each element in the tuple 
+			template<typename tuple_t, template<typename> typename Func, typename... Args>
+			static void visit(tuple_t& tuple, Func<> function, Args... extra_args)
+			{
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - (count + 1));
+				using arg_type = std::tuple_element_t<col, tuple_t>;
+				auto visit_ = std::bind(function<arg_type>, std::placeholders::_1, std::placeholders::_2, extra_args...);
+				visit_(std::get<col>(tuple), col);
+				loop<count - 1>::visit(tuple, function);
+			}
+
+
 		};
 
 		template<>
@@ -364,6 +389,13 @@ namespace nl
 				return  handle_para<0>(statement, tuple, parray);
 			
 			}
+
+			template<typename tuple_t, typename Func>
+			static void visit(tuple_t& tuple, Func function)
+			{
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1 );
+				function(std::get<col>(tuple), col);
+			}
 		};
 
 		template<size_t I, typename T, typename S>
@@ -385,18 +417,29 @@ namespace nl
 			using type = decltype(std::tuple_cat(T{}, S{}));
 		};
 		
-		template<typename rel, typename Compare, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>
-		void sort(rel & rel, Compare comp)
+		template<typename rel, typename Compare, typename execution_policy = std::execution::sequenced_policy, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>
+		void sort_par(rel & rel, Compare comp, execution_policy policy = std::execution::seq)
 		{
+			(void)policy;
+			rel.sort(comp);
+		}
+
+		template<typename rel, typename Compare, typename execution_policy = std::execution::sequenced_policy,  std::enable_if_t<std::is_same_v<typename rel::container_t, std::vector<typename rel::tuple_t>>, int> = 0>
+		void sort_par(rel & rel, Compare comp, execution_policy policy = std::execution::seq)
+		{
+			std::sort(policy, rel.begin(), rel.end(), comp);
+		}
+		
+		template<typename rel, typename Compare, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>
+		void sort(rel & rel, Compare comp){
 			rel.sort(comp);
 		}
 
 		template<typename rel, typename Compare, std::enable_if_t<std::is_same_v<typename rel::container_t, std::vector<typename rel::tuple_t>>, int> = 0>
-		void sort(rel & rel, Compare comp)
-		{
+		void sort(rel & rel, Compare comp){
 			std::sort(rel.begin(), rel.end(), comp);
 		}
-		
+
 		//R is the super class
 		//T is the subclass
 
