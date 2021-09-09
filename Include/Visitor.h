@@ -29,10 +29,30 @@ namespace nl
 	public:
 		typedef R return_type;
 		typedef T visited_type;
-		
-		virtual return_type visit(visited_type&) = 0;
-		virtual return_type visit(visited_type&, size_t) = 0;
+		virtual return_type visit(visited_type& val, size_t col) = 0;
 	};
+
+	//list of types to derive from
+	template<typename U, typename R>
+	class visitor<std::tuple<U>, R>
+	: public visitor<U, R>{
+	public:
+		typedef R return_type;
+		using visitor<U, R>::visit;
+	};
+
+	template<typename U, typename R, typename...T>
+	class visitor<std::tuple<U, T...>, R> : public visitor<U, R>, public visitor<std::tuple<T...>, R>
+	{
+	public:
+		typedef R return_type;
+		typedef U visited_type;
+		using visitor<U, R>::visit;
+		using visitor<std::tuple<T...>, R>::visit;
+
+	};
+
+
 
 	template<typename R, class Visited>
 	struct default_catch_all
@@ -65,8 +85,6 @@ namespace nl
 		typedef R return_type;
 		virtual ~base_visitable(){}
 		virtual R accept(base_visitor&) = 0;
-		virtual R accept(base_visitor&, size_t) = 0;
-
 	protected:
 		template<class T>
 		static auto acceptImpl(T& visited, base_visitor& guest)
@@ -96,38 +114,4 @@ namespace nl
 		virtual return_type accept(::nl::base_visitor& guest, size_t row) \
 		{return acceptImpl(*this, guest, row); }
 
-
-	template<typename T, typename R, typename call_back, size_t... I>
-	class concrete_visitor : public base_visitor, public visitor<T, R>
-	{
-	public:
-		typedef std::index_sequence<I...> indx_t;
-		typedef call_back call_back_t;
-
-		concrete_visitor(call_back_t callback) :
-			mCall_back(callback)
-		{}
-
-		virtual R visit(T& visited) override
-		{
-			static_assert(std::tuple_size_v<typename T::tuple_t> == sizeof...(I), "index is out of bounds");
-			for (auto& tuple : visited)
-			{
-				 mCall_back(std::get<I>(tuple)...);
-			}
-			return R();
-		}
-
-
-		virtual R visit(T& visited, size_t row) override
-		{
-			static_assert(std::tuple_size_v<typename T::tuple_t> == sizeof...(I), "index is out of bounds");
-			typename T::tuple_t& value = *(std::next(visited.begin(), row));
-			return mCall_back(std::get<I>(value)...);
-		}
-
-	private:
-		call_back_t mCall_back;
-
-	};
 };

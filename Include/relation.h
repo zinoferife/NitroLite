@@ -54,7 +54,6 @@ namespace nl {
 		constexpr static size_t column_count = std::tuple_size_v<tuple_t>;
 		static size_t row_id;
 
-
 		relation() = default;
 		explicit relation(size_t size) : container_t{ size } {}
 		relation(const relation& val) : container_t(val) {}

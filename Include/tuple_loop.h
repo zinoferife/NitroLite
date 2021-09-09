@@ -2,6 +2,9 @@
 #include <tuple>
 #include <fmt/format.h>
 #include <SQLite/sqlite3.h>
+
+#include "visitor.h"
+#include "tuple_t_operations.h"
 namespace nl
 {
 	template<size_t...I>
@@ -68,25 +71,6 @@ namespace nl
 		//sqlite only wants 5 types: integral, floating_point, string, blob and null
 		//in nitrolite blob is std::vector<uint8_t> 
 		//this type trait ensures we are only operating in those types
-		template<typename tuple_t, class T> struct index_of;
-
-		template<typename U, typename T>
-		struct index_of<std::tuple<U>, T>{enum {value = -1};};
-
-		template<typename T>
-		struct index_of<std::tuple<T>, T>{enum { value = 0 };};
-
-		template<typename T, typename...U>
-		struct index_of<std::tuple<T, U...>, T>{enum {value = 0};};
-
-		template<typename T, typename U, typename ...S>
-		struct index_of<std::tuple<U, S...>, T>
-		{
-		private:
-			enum {temp = index_of<std::tuple<S...>, T>::value};
-		public:
-			enum {value = temp == -1 ? -1 : 1 + temp };
-		};
 
 		template<typename T>
 		class is_database_type
@@ -334,19 +318,19 @@ namespace nl
 				return std::tuple_cat(std::move(t), std::move(t2));
 			}
 
-
 			//runs a function for each element in the tuple 
-			template<typename tuple_t, template<typename> typename Func, typename... Args>
-			static void visit(tuple_t& tuple, Func<> function, Args... extra_args)
+			//accept a visitor
+			template<typename tuple_t>
+			static void accept(base_visitor& guest, tuple_t& tuple)
 			{
 				constexpr size_t col = (std::tuple_size_v<tuple_t> - (count + 1));
 				using arg_type = std::tuple_element_t<col, tuple_t>;
-				auto visit_ = std::bind(function<arg_type>, std::placeholders::_1, std::placeholders::_2, extra_args...);
-				visit_(std::get<col>(tuple), col);
-				loop<count - 1>::visit(tuple, function);
+				if (nl::visitor<arg_type, void> * visitor_ptr = dynamic_cast<nl::visitor<arg_type, void>*>(&guest))
+				{
+					visitor_ptr->visit(std::get<col>(tuple), col);
+				}
+				loop<count - 1>::template accept(guest, tuple);
 			}
-
-
 		};
 
 		template<>
@@ -390,12 +374,17 @@ namespace nl
 			
 			}
 
-			template<typename tuple_t, typename Func>
-			static void visit(tuple_t& tuple, Func function)
+			template<typename tuple_t>
+			static void accept(base_visitor& guest, tuple_t& tuple)
 			{
-				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1 );
-				function(std::get<col>(tuple), col);
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1);
+				using arg_type = std::tuple_element_t<col, tuple_t>;
+				if (nl::visitor<arg_type, void> * visitor_ptr = dynamic_cast<nl::visitor<arg_type, void>*>(&guest))
+				{
+					visitor_ptr->visit(std::get<col>(tuple), col);
+				}
 			}
+
 		};
 
 		template<size_t I, typename T, typename S>
@@ -405,18 +394,6 @@ namespace nl
 			bool operator()(S s, const T& t) const { return s < std::get<I>(t); }
 		};
 
-		template<typename T, typename S>
-		struct _join_tuple_size
-		{
-			enum {value = std::tuple_size_v<T> + std::tuple_size_v<S>};
-		};
-
-		template<typename T, typename S>
-		struct join_tuple_type
-		{
-			using type = decltype(std::tuple_cat(T{}, S{}));
-		};
-		
 		template<typename rel, typename Compare, typename execution_policy = std::execution::sequenced_policy, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>
 		void sort_par(rel & rel, Compare comp, execution_policy policy = std::execution::seq)
 		{
