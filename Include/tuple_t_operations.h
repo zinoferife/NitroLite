@@ -36,7 +36,6 @@ namespace nl
 			using type = T;
 		};
 
-
 		template<typename tuple_t, class T> struct index_of;
 
 		template<typename U, typename T>
@@ -57,7 +56,6 @@ namespace nl
 			enum { value = temp == -1 ? -1 : 1 + temp };
 		};
 
-		//removing duplicates
 		template<typename tuple_t, typename T> struct erase_type;
 
 		template<typename U, typename T>
@@ -69,7 +67,6 @@ namespace nl
 		template<typename T>
 		struct erase_type<std::tuple<T>, T>
 		{
-			//used to indicate the type at end
 			typedef void type;
 		};
 

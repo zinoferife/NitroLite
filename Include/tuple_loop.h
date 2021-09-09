@@ -262,7 +262,6 @@ namespace nl
 
 		}
 
-
 		template<size_t count>
 		class loop
 		{
@@ -285,18 +284,18 @@ namespace nl
 			}
 
 			template<typename database_stmt, typename tuple_t>
-			static bool do_insert(database_stmt statement, const tuple_t& tuple)
+			static bool do_bind(database_stmt statement, const tuple_t& tuple)
 			{
 				bool b = handle<count>(statement, tuple);
-				bool b2 = loop<count - 1>::do_insert(statement, tuple);
+				bool b2 = loop<count - 1>::do_bind(statement, tuple);
 				return (b2 && b);
 			}
 
 			template<typename database_stmt_t, typename tuple_t, typename parameter_array_t>
-			static bool do_insert_para(database_stmt_t statement, const tuple_t& tuple, const parameter_array_t& parray)
+			static bool do_bind_para(database_stmt_t statement, const tuple_t& tuple, const parameter_array_t& parray)
 			{
 				bool b = handle_para<count>(statement, tuple, parray);
-				bool b2 = loop<count - 1>::do_insert_para(statement, tuple, parray);
+				bool b2 = loop<count - 1>::do_bind_para(statement, tuple, parray);
 				return (b && b2);
 			}
 
@@ -331,6 +330,22 @@ namespace nl
 				}
 				loop<count - 1>::template accept(guest, tuple);
 			}
+
+			template<typename tuple_t, typename T>
+			static void get_in(const tuple_t& tuple, T& put_in, size_t column)
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_in");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
+				using arg_type = std::tuple_element_t<col, tuple_t>;
+				if (col == column)
+				{
+					put_in = T(std::get<col>(tuple));
+					return;
+				}
+				loop<count - 1>::get_in(tuple, put_in, column);
+			}
+
+
 		};
 
 		template<>
@@ -352,7 +367,7 @@ namespace nl
 				return std::make_tuple(object);
 			}
 			template<typename database_stmt, typename tuple_t>
-			static bool do_insert(database_stmt statement, const tuple_t& tuple)
+			static bool do_bind(database_stmt statement, const tuple_t& tuple)
 			{
 				return handle<0>(statement, tuple);
 			}
@@ -368,7 +383,7 @@ namespace nl
 			}
 
 			template<typename database_stmt_t, typename tuple_t, typename parameter_array_t>
-			static bool do_insert_para(database_stmt_t statement, const tuple_t& tuple, const parameter_array_t& parray)
+			static bool do_bind_para(database_stmt_t statement, const tuple_t& tuple, const parameter_array_t& parray)
 			{
 				return  handle_para<0>(statement, tuple, parray);
 			
@@ -382,6 +397,19 @@ namespace nl
 				if (nl::visitor<arg_type, void> * visitor_ptr = dynamic_cast<nl::visitor<arg_type, void>*>(&guest))
 				{
 					visitor_ptr->visit(std::get<col>(tuple), col);
+				}
+			}
+
+			template<typename tuple_t, typename T>
+			static void get_in(const tuple_t& tuple, T& put_in, size_t column)
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_in");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1);
+				using arg_type = std::tuple_element_t<col, tuple_t>;
+				if (col == column)
+				{
+					put_in = T(std::get<col>(tuple));
+					return;
 				}
 			}
 
@@ -429,7 +457,7 @@ namespace nl
 			static big_t test(...);
 			static R make_t();
 		public:
-			enum {exisit = sizeof(test(make_t())) == sizeof(small), same_type = false};
+			enum {exisit = sizeof(test(make_t())) == sizeof(small_t), same_type = false};
 		};
 
 		template<class T>

@@ -42,9 +42,6 @@
     <ClInclude Include="Include\query.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Include\Manager.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Include\table.h">
       <Filter>Header Files</Filter>
     </ClInclude>

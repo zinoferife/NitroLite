@@ -1,6 +1,6 @@
 #pragma once
 #include "relation.h"
-
+#include <array>
 namespace nl
 {
 	//the idea of tables is to have named realtions
@@ -13,11 +13,11 @@ namespace nl
 	public:
 		using name_t = std::string;
 		//0 is reserved for the table name
-		using name_array = std::array<name_t, std::tuple_size_v<typename vector_relation<args...>::tuple_t> + 1>;
+		using name_array = std::array<name_t, std::tuple_size_v<typename vector_relation<args...>::tuple_t> +1 > ;
 		
 
 		vector_table() {}
-		//vector_table(size_t size) : vector_relation<args...>{ size } {}
+		vector_table(size_t size) : vector_relation<args...>{ size } {}
 		virtual ~vector_table() {}
 
 

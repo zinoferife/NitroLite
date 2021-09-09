@@ -121,6 +121,24 @@ bool nl::database_connection::register_extension(const sql_extension_func_aggreg
 		ext.fUserData, ext.fFunc, ext.fStep, ext.fFinal) == SQLITE_OK);
 }
 
+bool nl::database_connection::connect(const std::string_view& file)
+{
+	if (file.empty()) {
+		if (sqlite3_open(nullptr, &m_database_conn) == SQLITE_ERROR) {
+			m_error_msg = "FATAL ERROR MESSAGE: COULD NOT OPEN DATABSE IN MEMORY";
+			return false;
+		}
+	}
+	else {
+		if (m_database_conn == nullptr)
+		{
+			return (sqlite3_open(file.data(), &m_database_conn) == SQLITE_ERROR);
+		}
+	}
+	m_error_msg = "DATABASE ALREAY OPENED, CLOSE DATABASE BEFORE CONNECTING TO A DIFFERENT ONE";
+	return false;
+}
+
 bool nl::database_connection::exec_once(statement_index index)
 {
 	assert(index < m_statements.size() && "Invalid statement index");

@@ -33,7 +33,7 @@ namespace nl {
 
 	template<template<class, class>typename container, 
 		typename... val>
-	class relation<container<std::tuple<val...>, alloc_t<std::tuple<val...> > > > : 
+		class relation<container<std::tuple<val...>, alloc_t<std::tuple<val...> > > > :
 		public container<std::tuple<val...>, alloc_t<std::tuple<val...>>>, public base_relation
 	{
 	public:
@@ -71,7 +71,14 @@ namespace nl {
 
 		virtual ~relation() {}
 
-
+		//experimental
+		void accept(base_visitor& guest)
+		{
+			for (auto& row : *this)
+			{
+				nl::detail::loop<column_count - 1>::template accept(guest, row);
+			}
+		}
 
 		auto insert(tuple_t& tuple)
 		{
@@ -89,7 +96,7 @@ namespace nl {
 			return (sum / static_cast<double>(container_t::size()));
 		}
 
-		inline void add(const val&... args)
+		inline void add(const val& ... args)
 		{
 			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add");
 			container_t::emplace_back(args...);
@@ -120,7 +127,7 @@ namespace nl {
 		template<size_t...I>
 		inline void update_row(size_t row, const elem_t<I>& ... args)
 		{
-			((std::get<I>(container_t::operator[](row)) = args),...);
+			((std::get<I>(container_t::operator[](row)) = args), ...);
 		}
 
 
@@ -149,7 +156,7 @@ namespace nl {
 		{
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto it = std::lower_bound(container_t::begin(), container_t::end(), value, comp);
-			if (it == container_t::end()){
+			if (it == container_t::end()) {
 				return false;
 			}
 			found_row = *it;
@@ -157,10 +164,10 @@ namespace nl {
 		}
 
 		template<size_t I>
-		std::vector<relation_t> group_by(){
+		std::vector<relation_t> group_by() {
 			order_by<I>();
 			std::vector<relation_t> ret_vec;
-			for (auto iter = container_t::begin(); iter != container_t::end();){
+			for (auto iter = container_t::begin(); iter != container_t::end();) {
 				detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 				auto upper_iter = std::upper_bound(iter, container_t::end(), std::get<I>(*iter), comp);
 
@@ -177,7 +184,7 @@ namespace nl {
 		auto map_group_by()
 		{
 			std::unordered_map<elem_t<I>, relation_t> group_map;
-			for (auto iter = container_t::begin(); iter != container_t::end(); iter++){
+			for (auto iter = container_t::begin(); iter != container_t::end(); iter++) {
 				group_map[std::get<I>(*iter)].push_back(*iter);
 			}
 			return std::move(group_map);
@@ -190,17 +197,17 @@ namespace nl {
 		template<size_t I1, size_t I2, typename rel_t >
 		auto join_on(rel_t& rel)
 		{
-			static_assert(std::is_same_v<typename std::tuple_element_t<I1, tuple_t>, typename std::tuple_element_t<I2, typename rel_t::tuple_t>> 
-						 || std::is_convertible_v<elem_t<I1>, typename rel_t::template elem_t<I2>>, "Cannot join on column that are not same type or the types are not convertible");
+			static_assert(std::is_same_v<typename std::tuple_element_t<I1, tuple_t>, typename std::tuple_element_t<I2, typename rel_t::tuple_t>>
+				|| std::is_convertible_v<elem_t<I1>, typename rel_t::template elem_t<I2>>, "Cannot join on column that are not same type or the types are not convertible");
 			using type = typename detail::join_tuple_type<tuple_t, typename rel_t::tuple_t>::type;
 			relation<container<type, alloc_t<type>>> new_relation;
 			std::unordered_map<std::tuple_element_t<I2, typename rel_t::tuple_t>, typename rel_t::iterator> find_map;
-			for (auto rel_iter = rel.begin(); rel_iter != rel.end(); rel_iter++)	{
+			for (auto rel_iter = rel.begin(); rel_iter != rel.end(); rel_iter++) {
 				find_map.insert(std::make_pair(std::get<I2>(*rel_iter), rel_iter));
 			}
-			for (auto this_iter = container_t::begin(); this_iter != container_t::end(); this_iter++){
+			for (auto this_iter = container_t::begin(); this_iter != container_t::end(); this_iter++) {
 				auto find_iter = find_map.find(std::get<I1>(*this_iter));
-				if (find_iter != find_map.end()){
+				if (find_iter != find_map.end()) {
 					new_relation.push_back(std::forward<type>(std::tuple_cat(*this_iter, *(find_iter->second))));;
 				}
 			}
@@ -210,11 +217,11 @@ namespace nl {
 		//removes all consequtive adjacent dublicates, sort first if you want to remove all dublicate 
 		//O(N) for the whole relation
 		template<size_t I>
-		void unique(){
+		void unique() {
 			auto start = container_t::begin();
 			auto result = start;
-			while (++start != container_t::end()){
-				if (!(std::get<I>(*result) == std::get<I>(*start)) && ((++result) != (start))){
+			while (++start != container_t::end()) {
+				if (!(std::get<I>(*result) == std::get<I>(*start)) && ((++result) != (start))) {
 					*result = std::move(*start);
 				}
 			}
@@ -223,7 +230,7 @@ namespace nl {
 		}
 
 		template<size_t...I>
-		auto select(){
+		auto select() {
 			using T = std::tuple<std::tuple_element_t<I, tuple_t>...>;
 			relation<container<T, alloc_t<T>>> new_relation;
 			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
@@ -231,6 +238,47 @@ namespace nl {
 				new_relation.push_back(std::forward_as_tuple(std::get<I>(*iter)...));
 			}
 			return std::move(new_relation);
+		}
+		template<size_t I>
+		auto isolate_column()
+		{
+			std::vector<elem_t<I>> isolated_column(container_t::size());
+			std::transform(container_t::begin(), container_t::end(), isolated_column.begin(), [&](tuple_t& row) -> elem_t<I> {
+				return std::get<I>(row);
+			});
+			return std::move(isolated_column);
+		}
+
+
+
+		void del_back()
+		{
+			container_t::pop_back();
+		}
+
+		void del_row(size_t row)
+		{
+			assert(row < container_t::size() && "Invalid \'row\' index in del_row");
+			if (row == container_t::size() - 1){
+				container_t::pop_back();
+				return;
+			}
+			auto it = std::next(container_t::begin(), row);
+			if (it != container_t::end())
+			{
+				container_t::erase(it);
+			}
+		}
+
+		void del_row_range(size_t from, size_t count)
+		{
+			assert(((from + count) < container_t::size()) && "Invalid \'from\' in del_row_range");
+			auto it_from = std::next(container_t::begin(), from);
+			auto it_to = std::next(it_from, count);
+			if (it_from != container_t::end() && it_to != container_t::end())
+			{
+				container_t::erase(it_from, it_to);
+			}
 		}
 
 
@@ -332,6 +380,11 @@ namespace nl {
 						return (std::get<I>(val1) < std::get<I>(val2));
 					});
 				(*this) = std::move(ret);
+		}
+
+		void Append_back(relation_t& rel)
+		{
+			std::copy(rel.begin(), rel.end(), std::back_insert_iterator<container_t>(*this));
 		}
 
 		bool is_sub_relation(relation_t& rel)

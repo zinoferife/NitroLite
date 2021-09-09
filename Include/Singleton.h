@@ -125,7 +125,7 @@ namespace nl
 		static void destory()
 		{
 			assert(!destoryed_ && "Singleton already destoryed");
-			mInstance.release();
+			mInstance.reset(nullptr);
 			destoryed_ = true;
 		}
 
