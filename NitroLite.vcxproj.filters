@@ -48,6 +48,9 @@
     <ClInclude Include="Include\tuple_t_operations.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\hierarchy_creation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

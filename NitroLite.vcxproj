@@ -164,6 +164,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Include\Database.h" />
+    <ClInclude Include="Include\hierarchy_creation.h" />
     <ClInclude Include="Include\query.h" />
     <ClInclude Include="Include\relation.h" />
     <ClInclude Include="Include\relation_buffer.h" />

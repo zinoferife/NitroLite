@@ -344,8 +344,6 @@ namespace nl
 				}
 				loop<count - 1>::get_in(tuple, put_in, column);
 			}
-
-
 		};
 
 		template<>

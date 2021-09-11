@@ -144,6 +144,7 @@ namespace nl
 			mInstance = std::make_unique<T>(args);
 		}
 
+		static std::mutex INSTANCE_MUTEX;
 	private:
 		struct destroyer
 		{
@@ -176,5 +177,8 @@ namespace nl
 
 	template<typename T>
 	std::once_flag singleton_holder<T>::m_once_flag{};
+
+	template<typename T>
+	std::mutex singleton_holder<T>::INSTANCE_MUTEX{};
 
 };
