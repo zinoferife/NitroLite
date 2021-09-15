@@ -51,6 +51,12 @@
     <ClInclude Include="Include\hierarchy_creation.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\table_listener.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\nl_time.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -63,6 +69,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Singleton.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nl_time.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

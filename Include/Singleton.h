@@ -114,12 +114,13 @@ namespace nl
 					on_dead_reference();
 					destoryed_ = false;
 				}
-				std::call_once(m_once_flag, do_create, args);
+				std::call_once(m_once_flag, [&](Args... arg) { do_create(arg...); }, args...);
 			}
 			return (*mInstance);
 		}
 		template<class singleton>
 		friend void detail::set_longevity(unsigned int longevity);
+		static std::mutex instance_mutex;
 
 	private:
 		static void destory()
@@ -141,10 +142,9 @@ namespace nl
 		template<typename... Args>
 		static void do_create(Args... args)
 		{
-			mInstance = std::make_unique<T>(args);
+			mInstance = std::make_unique<T>(args...);
 		}
 
-		static std::mutex INSTANCE_MUTEX;
 	private:
 		struct destroyer
 		{
@@ -179,6 +179,6 @@ namespace nl
 	std::once_flag singleton_holder<T>::m_once_flag{};
 
 	template<typename T>
-	std::mutex singleton_holder<T>::INSTANCE_MUTEX{};
+	std::mutex singleton_holder<T>::instance_mutex{};
 
 };

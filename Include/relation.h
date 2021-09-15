@@ -12,6 +12,8 @@
 	//exceptions are thrown by the std algorithms, exceptions are not handled by the class, i think it would better to catch the excpetions at application level not libary level, have more handling capabilites plus can inform the user
 
 #include <cstdint>
+#include <regex>
+
 #define BEGIN_COL_NAME(name)static constexpr char table_name[] = name; static constexpr const char* col_names[] =  {
 #define COL_NAME(name) name,
 #define END_COL_NAME() "null"};
@@ -96,15 +98,17 @@ namespace nl {
 			return (sum / static_cast<double>(container_t::size()));
 		}
 
-		inline void add(const val& ... args)
+		inline typename container_t::reference add(const val& ... args)
 		{
 			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add");
 			container_t::emplace_back(args...);
+			return container_t::back();
 		}
 
-		void add(const row_t& row)
+		inline typename container_t::reference add(const row_t& row)
 		{
 			container_t::emplace_back(std::move(row));
+			return container_t::back();
 		}
 		template<size_t col>
 		inline const typename std::tuple_element_t<col, tuple_t>& get(size_t row) const
@@ -195,7 +199,7 @@ namespace nl {
 		//assumes that both col I1 and I2 have unique elements and are both the same type or is 
 
 		template<size_t I1, size_t I2, typename rel_t >
-		auto join_on(rel_t& rel)
+		auto join_on(const rel_t& rel)
 		{
 			static_assert(std::is_same_v<typename std::tuple_element_t<I1, tuple_t>, typename std::tuple_element_t<I2, typename rel_t::tuple_t>>
 				|| std::is_convertible_v<elem_t<I1>, typename rel_t::template elem_t<I2>>, "Cannot join on column that are not same type or the types are not convertible");
@@ -249,8 +253,6 @@ namespace nl {
 			return std::move(isolated_column);
 		}
 
-
-
 		void del_back()
 		{
 			container_t::pop_back();
@@ -270,15 +272,35 @@ namespace nl {
 			}
 		}
 
+		//need to test this 
 		void del_row_range(size_t from, size_t count)
 		{
 			assert(((from + count) < container_t::size()) && "Invalid \'from\' in del_row_range");
 			auto it_from = std::next(container_t::begin(), from);
 			auto it_to = std::next(it_from, count);
-			if (it_from != container_t::end() && it_to != container_t::end())
+			if (it_from != container_t::end())
 			{
 				container_t::erase(it_from, it_to);
 			}
+		}
+
+		template<size_t I>
+		auto like(const std::regex& expresion)
+		{
+			//returns a relation of values found, like only works on string types
+			if constexpr (!std::is_same_v<elem_t<I>, std::string>)
+			{
+				return relation_t{};
+			}
+			relation_t ret;
+			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
+			{
+				if (std::regex_match(std::get<I>(*iter), expresion))
+				{
+					ret.push_back(*iter);
+				}
+			}
+			return std::move(ret);
 		}
 
 
@@ -317,24 +339,28 @@ namespace nl {
 			auto iter = std::lower_bound(container_t::begin(), container_t::end(),std::get<I>(tuple), comp);
 			if (iter != container_t::end()){
 				container_t::insert(iter, std::move(tuple));
+				return (*iter);
 			}
 			else {
 				//greater than the last element
 				container_t::push_back(std::move(tuple));
+				return container_t::back();
 			}
 		}
 
 		template<size_t I>
-		void add_in_order(const row_t& row)
+		typename container_t::reference add_in_order(const row_t& row)
 		{
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto iter = std::lower_bound(container_t::begin(), container_t::end(), std::get<I>(row), comp);
 			if (iter != container_t::end()) {
 				container_t::insert(iter, row);
+				return (*iter);
 			}
 			else {
 				//greater than the last element
 				container_t::push_back(row);
+				return container_t::back();
 			}
 		}
 
@@ -347,15 +373,17 @@ namespace nl {
 			default_row = std::make_tuple(values...);
 		}
 		template<size_t I>
-		void add_default_in_order(){
+		typename container_t::reference add_default_in_order(){
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto iter = std::lower_bound(container_t::begin(), container_t::end(), std::get<I>(default_row), comp);
 			if (iter != container_t::end()) {
 				container_t::insert(iter, default_row);
+				return *iter;
 			}
 			else {
 				//greater than the last element
 				container_t::push_back(default_row);
+				return container_t::back();
 			}
 		}
 
@@ -365,7 +393,7 @@ namespace nl {
 
 
 		//assumes that both are it is sorted
-		void merge(relation_t& rel)
+		void merge(const relation_t& rel)
 		{
 				relation_t ret(container_t::size() + rel.size());
 				std::merge(container_t::begin(), container_t::end(), rel.begin(), rel.end(), ret.begin());
@@ -373,7 +401,7 @@ namespace nl {
 		}
 
 		template<size_t I>
-		void merge_on(relation_t& rel)
+		void merge_on(const relation_t& rel)
 		{
 				relation_t ret(container_t::size() + rel.size());
 				std::merge(container_t::begin(), container_t::end(), rel.begin(), rel.end(), ret.begin(), [&](const tuple_t& val1, const tuple_t& val2) {
@@ -382,12 +410,12 @@ namespace nl {
 				(*this) = std::move(ret);
 		}
 
-		void Append_back(relation_t& rel)
+		void Append_back(const relation_t& rel)
 		{
 			std::copy(rel.begin(), rel.end(), std::back_insert_iterator<container_t>(*this));
 		}
 
-		bool is_sub_relation(relation_t& rel)
+		bool is_sub_relation(const relation_t& rel)
 		{
 			return std::includes(container_t::begin(), container_t::end(), rel.begin(), rel.end());
 		}
@@ -489,14 +517,14 @@ namespace nl {
 		}
 
 		template<typename execution_policy = std::execution::parallel_policy>
-		bool is_sub_relation_par(relation_t & rel, execution_policy policy = std::execution::par)
+		bool is_sub_relation_par(const relation_t & rel, execution_policy policy = std::execution::par)
 		{
 			return std::includes(policy, container_t::begin(), container_t::end(), rel.begin(), rel.end());
 		}
 
 
 		template<size_t I, typename execution_policy = std::execution::parallel_policy>
-		void merge_on_par(relation_t & rel, execution_policy  policy = std::execution::par)
+		void merge_on_par(const relation_t & rel, execution_policy  policy = std::execution::par)
 		{
 			relation_t ret(container_t::size() + rel.size());
 			std::merge(policy, container_t::begin(), container_t::end(), rel.begin(), rel.end(), ret.begin(), [&](const tuple_t& val1, const tuple_t& val2) {
@@ -506,7 +534,7 @@ namespace nl {
 		}
 
 		template<typename execution_policy = std::execution::parallel_policy>
-		void merge_par(relation_t & rel, execution_policy policy = std::execution::par)
+		void merge_par(const relation_t & rel, execution_policy policy = std::execution::par)
 		{
 			relation_t ret(container_t::size() + rel.size());
 			std::merge(policy, container_t::begin(), container_t::end(), rel.begin(), rel.end(), ret.begin());
@@ -549,7 +577,7 @@ namespace nl {
 		}
 
 		template<size_t I1, size_t I2, typename rel_t, typename execution_policy = std::execution::parallel_policy >
-		auto join_on_par(rel_t& rel, execution_policy policy = std::execution::par)
+		auto join_on_par(const rel_t& rel, execution_policy policy = std::execution::par)
 		{
 			static_assert(std::is_same_v<typename std::tuple_element_t<I1, tuple_t>, typename std::tuple_element_t<I2, typename rel_t::tuple_t>>
 				|| std::is_convertible_v<elem_t<I1>, typename rel_t::template elem_t<I2> >, "Cannot join on column that are not same type or the types are not convertible");

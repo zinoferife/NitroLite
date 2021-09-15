@@ -2,6 +2,7 @@
 #pragma once
 #include "../pch.h"
 #include "tuple_loop.h"
+#include "nl_time.h"
 namespace nl
 {
 	//todo: remove this template from this, not neccessary anymore
@@ -53,6 +54,13 @@ namespace nl
 			return (*this);
 		}
 
+		template<typename T, std::enable_if_t<std::is_same_v<T, date_time_t>, int> = 0>
+		inline relation_buffer& write(const T & value)
+		{
+			auto rep = nl::to_representation(value);
+			return write(rep);
+		}
+
 		inline relation_buffer& write(...)
 		{
 			assert(false && "Cannot serilize the object too complex or not a sqlite fundamental type that should be in a relation");
@@ -96,6 +104,15 @@ namespace nl
 				mReadHead += sizeof(T);
 				return (*this);
 			}
+		}
+
+		template<typename T, std::enable_if_t<std::is_same_v<T, date_time_t>, int> = 0>
+		inline relation_buffer & read(T & value)
+		{
+			clock::duration::rep rep;
+			read(rep);
+			value = from_representation(rep);
+			return(*this); 
 		}
 
 		//todo: container should actually just be a vector type 

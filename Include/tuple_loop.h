@@ -5,6 +5,7 @@
 
 #include "visitor.h"
 #include "tuple_t_operations.h"
+#include "nl_time.h"
 namespace nl
 {
 	template<size_t...I>
@@ -69,13 +70,16 @@ namespace nl
 	namespace detail
 	{
 		//sqlite only wants 5 types: integral, floating_point, string, blob and null
-		//in nitrolite blob is std::vector<uint8_t> 
+		//in nitrolite blob is std::vector<uint8_t>
+		//date_time_t time is a chrono::time_point that is store as a int64 in sqlite,
+		//the standard says system clock's duration representation can be at least 45 bits
+		//storing as int64 should be sufficient 
 		//this type trait ensures we are only operating in those types
 
 		template<typename T>
 		class is_database_type
 		{
-			using special_types = std::tuple<std::string, blob_t, nullptr_t>;
+			using special_types = std::tuple<std::string, blob_t, nullptr_t, date_time_t>;
 		public:
 			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || index_of<special_types, T>::value >= 0) };
 		};
@@ -130,6 +134,12 @@ namespace nl
 			{
 				return (SQLITE_OK == sqlite3_bind_null(statement, position));
 			}
+			else if constexpr (std::is_same_v<arg_type, date_time_t>)
+			{
+				auto rep = nl::to_representation(std::get<col_id>(tuple));
+				return (SQLITE_OK == sqlite3_bind_int64(statement, position, rep));
+			}
+
 			else
 			{
 				return false;
@@ -196,6 +206,11 @@ namespace nl
 			{
 				return (SQLITE_OK == sqlite3_bind_null(statement, position));
 			}
+			else if constexpr (std::is_same_v<arg_type, date_time_t>)
+			{
+				auto rep = nl::to_representation(std::get<col_id>(tuple));
+				return (SQLITE_OK == sqlite3_bind_int64(statement, position, rep));
+			}
 			else
 			{
 				return false;
@@ -252,6 +267,14 @@ namespace nl
 				}
 				return std::make_tuple(std::string{});
 			}
+			else if constexpr (std::is_same_v<arg_t, date_time_t>)
+			{
+				auto rep = sqlite3_column_int64(statement, col);
+				return std::make_tuple(from_representation((clock::duration::rep)rep));
+			}
+
+
+
 			else if constexpr (std::is_same_v<arg_t, std::basic_string<wchar_t>>)
 			{assert(false && "no support for wide characters");}
 			else if constexpr (std::is_same_v<arg_t, std::basic_string<char16_t>>)

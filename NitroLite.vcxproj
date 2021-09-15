@@ -165,11 +165,13 @@
   <ItemGroup>
     <ClInclude Include="Include\Database.h" />
     <ClInclude Include="Include\hierarchy_creation.h" />
+    <ClInclude Include="Include\nl_time.h" />
     <ClInclude Include="Include\query.h" />
     <ClInclude Include="Include\relation.h" />
     <ClInclude Include="Include\relation_buffer.h" />
     <ClInclude Include="Include\Singleton.h" />
     <ClInclude Include="Include\table.h" />
+    <ClInclude Include="Include\table_listener.h" />
     <ClInclude Include="Include\tuple_loop.h" />
     <ClInclude Include="Include\tuple_t_operations.h" />
     <ClInclude Include="Include\Visitor.h" />
@@ -179,6 +181,7 @@
   <ItemGroup>
     <ClCompile Include="Include\Database.cpp" />
     <ClCompile Include="Include\query.cpp" />
+    <ClCompile Include="nl_time.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

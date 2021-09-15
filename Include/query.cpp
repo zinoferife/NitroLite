@@ -38,13 +38,13 @@ query& query::insert(const std::string_view& table)
 query& query::create_table(const std::string_view& table)
 {
 	first_col = true;
-	mQuery << fmt::format("CREATE TABLE {} ", table);
+	mQuery << fmt::format("CREATE TABLE IF NOT EXISTS {} ", table);
 	return (*this);
 }
 
 query& query::create_view(const std::string_view& view)
 {
-	mQuery << fmt::format("CREATE VIEW {} ", view);
+	mQuery << fmt::format("CREATE VIEW IF NOT EXISTS {} ", view);
 	return (*this);
 }
 
