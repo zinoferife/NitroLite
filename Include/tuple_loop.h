@@ -84,6 +84,7 @@ namespace nl
 			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || index_of<special_types, T>::value >= 0) };
 		};
 
+		
 
 		template<size_t count, typename database_stmt, typename tuple_t>
 		inline bool handle(database_stmt statement, const tuple_t& tuple)
@@ -367,6 +368,53 @@ namespace nl
 				}
 				loop<count - 1>::get_in(tuple, put_in, column);
 			}
+
+			template<typename tuple_t>
+			static auto get_as_string(const tuple_t& tuple, size_t column) -> std::string 
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_as_string");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
+				using arg_type = std::decay_t<std::tuple_element_t<col, tuple_t>>;
+				if (col == column)
+				{
+					if constexpr (std::is_same_v<date_time_t, arg_type>)
+					{
+						return fmt::format("{}:{}", nl::to_string_date(std::get<col>(tuple)),
+							nl::to_string_time(std::get<col>(tuple)));
+					}else if constexpr (std::is_integral_v<arg_type>){
+						return fmt::format("{:d}", std::get<col>(tuple));
+					}
+					else if constexpr (std::is_floating_point_v<arg_type>){
+						return fmt::format("{:.4f}", std::get<col>(tuple));
+					}
+					else if constexpr(fmt::is_formattable<arg_type>::value) {
+						return fmt::format("{}", std::get<col>(tuple));
+					}
+					else{
+						//null type lol 
+						return std::string();
+					}
+				}
+				return loop<count - 1>::get_as_string(tuple, column);
+			}
+
+			template<typename tuple_t, typename T>
+			static void put_value_in(tuple_t& tuple, const  T& value, size_t column)
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in put_value_in");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
+				using arg_type = std::decay_t<std::tuple_element_t<col, tuple_t>>;
+				if (col == column)
+				{
+					//might work? static_cast might be a problem
+					if constexpr (std::is_convertible_v<T, arg_type>){
+						std::get<col>(tuple) = static_cast<arg_type>(value);
+						return;
+					}
+				}
+				return loop<count - 1>::put_value_in(tuple, value, column);
+			}
+
 		};
 
 		template<>
@@ -434,6 +482,51 @@ namespace nl
 				}
 			}
 
+			template<typename tuple_t>
+			static auto get_as_string(const tuple_t& tuple, size_t column) -> std::string
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_as_string");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1);
+				using arg_type = std::decay_t<std::tuple_element_t<col, tuple_t>>;
+				if (col == column)
+				{
+					if constexpr (std::is_same_v<date_time_t, arg_type>)
+					{
+						return fmt::format("{}:{}", nl::to_string_date(std::get<col>(tuple)),
+							nl::to_string_time(std::get<col>(tuple)));
+					}
+					else if constexpr (std::is_integral_v<arg_type>) {
+						return fmt::format("{:d}", std::get<col>(tuple));
+					}
+					else if constexpr (std::is_floating_point_v<arg_type>) {
+						return fmt::format("{:.4f}", std::get<col>(tuple));
+					}
+					else if constexpr (fmt::is_formattable<arg_type>::value) {
+						return fmt::format("{}", std::get<col>(tuple));
+					}
+					else {
+						//null type lol 
+						return std::string();
+					}
+				}
+				return std::string();
+			}
+
+			template<typename tuple_t, typename T>
+			static void put_value_in(tuple_t& tuple, const  T& value, size_t column)
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in put_value_in");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1);
+				using arg_type = std::decay_t<std::tuple_element_t<col, tuple_t>>;
+				if (col == column)
+				{
+					//might work? static_cast might be a problem
+					if constexpr (std::is_convertible_v<T, arg_type>) {
+						std::get<col>(tuple) = static_cast<arg_type>(value);
+						return;
+					}
+				}
+			}
 		};
 
 		template<size_t I, typename T, typename S>
@@ -544,5 +637,31 @@ namespace nl
 				value = std::is_same_v<typename T::container_tag, set_relation_tag>
 			};
 		};
+
+		//get relation column type as string
+		namespace helper
+		{
+			static const std::uint32_t FRONT_SIZE = sizeof("nl::detail::helper::get_type_name_helper<") - 1u;
+			static const std::uint32_t BACK_SIZE = sizeof(">::get_type_name") - 1u;
+
+			template<typename T>
+			struct get_type_name_helper
+			{
+				static const char* get_type_name() {
+					static const size_t size = sizeof(__FUNCTION__) - FRONT_SIZE - BACK_SIZE;
+					static char type_name[size] = {};
+					std::memcpy(type_name, __FUNCTION__ + FRONT_SIZE, size - 1u);
+					return type_name;
+				}
+			};
+		}
+
+		template<typename T>
+		inline const char* get_type_name()
+		{
+			return helper::get_type_name_helper<T>::get_type_name();
+		}
+
+
 	}
 }

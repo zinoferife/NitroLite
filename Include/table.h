@@ -25,12 +25,13 @@ namespace nl
 		//0 is reserved for the table name
 		using name_array = std::array<name_t, std::tuple_size_v<typename vector_relation<args...>::tuple_t> +1 > ;
 		using relation_t  = vector_relation<args...>;
-		using listener_t = nl::table_listener<void, notifications, vector_table&, const typename vector_table::relation_t::row_t&>;
+		using listener_t = nl::table_listener<void, notifications, const vector_table&, const size_t&>;
+		using update_listener_t = nl::table_listener<void, notifications, const vector_table&, size_t, const size_t&>;
 		using table_t = vector_table;
 
 
 		vector_table() {}
-		vector_table(size_t size) : vector_relation<args...>{ size } {}
+		explicit vector_table(size_t size) : vector_relation<args...>{ size } {}
 		virtual ~vector_table() {}
 
 
@@ -87,14 +88,26 @@ namespace nl
 			return listeners;
 		}
 
-		void notify(notifications notif, const typename relation_t::row_t& row_affected = typename relation_t::row_t{})
+		inline update_listener_t& update_sink()
 		{
-			listeners.notify(notif, *this, row_affected);
+			return update_listeners;
+		}
+
+		void notify(notifications notif, const size_t& row_index)
+		{
+			listeners.notify(notif, *this, row_index);
+		}
+		
+		void notify(notifications notif,
+			size_t column, const size_t& row_index)
+		{
+			update_listeners.notify(notif, *this, column, row_index);
 		}
 
 	protected:
 		name_array names;
 		listener_t listeners;
+		update_listener_t update_listeners;
 
 	};
 

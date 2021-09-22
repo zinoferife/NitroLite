@@ -28,6 +28,7 @@ namespace nl {
 		}
 
 	public:
+		static constexpr size_t arg_count = sizeof...(Args);
 		table_listener() {}
 		template<R(*function)(Args...)>
 		void add_listener()

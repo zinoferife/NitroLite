@@ -10,6 +10,8 @@
 	// this froms the base object of all _TBL objects in the application 
 	// over engineering by ewomagram !!!!!
 	//exceptions are thrown by the std algorithms, exceptions are not handled by the class, i think it would better to catch the excpetions at application level not libary level, have more handling capabilites plus can inform the user
+	//TODO: include std::error_code in functions relations, add Relation error category to the system errors and exceptions can be handled like boost
+
 
 #include <cstdint>
 #include <regex>
@@ -55,6 +57,7 @@ namespace nl {
 		using elem_t = std::tuple_element_t<I, tuple_t>;
 		constexpr static size_t column_count = std::tuple_size_v<tuple_t>;
 		static size_t row_id;
+		static std::array<const char*, sizeof...(val)> val_types_names;
 
 		relation() = default;
 		explicit relation(size_t size) : container_t{ size } {}
@@ -73,6 +76,13 @@ namespace nl {
 
 		virtual ~relation() {}
 
+		//get column type as string
+		inline const char* get_column_type_name(size_t index)
+		{
+			assert(index < column_count && "Index is invalid");
+			return val_types_names[index];
+		}
+
 		//experimental
 		void accept(base_visitor& guest)
 		{
@@ -88,14 +98,18 @@ namespace nl {
 		}
 
 		template<size_t I>
-		auto average()
+		auto average() -> double
 		{
-			double sum = 0.0;
-			for (auto& tuple : *this)
+			if constexpr (std::is_integral_v<elem_t<I>> || std::is_floating_point_v<elem_t<I>>)
 			{
-				sum += std::get<I>(tuple);
+				double sum = 0.0;
+				for (auto& tuple : *this)
+				{
+					sum += std::get<I>(tuple);
+				}
+				return (sum / static_cast<double>(container_t::size()));
 			}
-			return (sum / static_cast<double>(container_t::size()));
+			return 0.0;
 		}
 
 		inline typename container_t::reference add(const val& ... args)
@@ -156,7 +170,7 @@ namespace nl {
 		}
 
 		template<size_t I>
-		bool binary_find(const typename std::tuple_element_t<I, tuple_t>& value, tuple_t& found_row)
+		bool binary_find(const typename std::tuple_element_t<I, tuple_t>& value, tuple_t& found_row) const
 		{
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto it = std::lower_bound(container_t::begin(), container_t::end(), value, comp);
@@ -194,6 +208,17 @@ namespace nl {
 			return std::move(group_map);
 		}
 
+		//still confused of the return type, int or size_t or container::diff_t
+		inline int get_index_row(const row_t& row) const
+		{
+			auto iter = std::find(container_t::begin(), container_t::end(), row);
+			if (iter != container_t::end())
+			{
+				return std::distance(container_t::begin(), iter);
+			}
+			else return -1;
+		}
+
 		//O(M+n) complexity in time
 		//O(n) complexity in memory
 		//assumes that both col I1 and I2 have unique elements and are both the same type or is 
@@ -206,7 +231,7 @@ namespace nl {
 			using type = typename detail::join_tuple_type<tuple_t, typename rel_t::tuple_t>::type;
 			relation<container<type, alloc_t<type>>> new_relation;
 			std::unordered_map<std::tuple_element_t<I2, typename rel_t::tuple_t>, typename rel_t::iterator> find_map;
-			for (auto rel_iter = rel.begin(); rel_iter != rel.end(); rel_iter++) {
+			for (auto rel_iter = rel.cbegin(); rel_iter != rel.cend(); rel_iter++) {
 				find_map.insert(std::make_pair(std::get<I2>(*rel_iter), rel_iter));
 			}
 			for (auto this_iter = container_t::begin(); this_iter != container_t::end(); this_iter++) {
@@ -641,6 +666,8 @@ namespace nl {
 	template<template<class, class> class container, typename... val>
 	size_t relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::row_id{ -1 };
 
+	template<template <class, class> class container, typename...val>
+	std::array<const char*, sizeof...(val)> relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::val_types_names{ (nl::detail::get_type_name<val>())... };
 
 	//set relation: This is turning out to be a dead end
 	//might just have to give seq containers the ability to maintain a sorted list

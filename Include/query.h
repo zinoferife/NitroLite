@@ -213,6 +213,11 @@ namespace nl
 				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);
 
 			}
+			else if constexpr (std::is_same_v<T, nl::date_time_t>)
+			{
+				mQuery << fmt::format("{} INTEGER ", name);
+				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);
+			}
 			return (*this);
 		}
 

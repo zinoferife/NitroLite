@@ -89,6 +89,7 @@ namespace nl
 	class singleton_holder
 	{
 	public:
+		typedef T value_type;
 		inline static T& instance()
 		{
 			if (!mInstance)

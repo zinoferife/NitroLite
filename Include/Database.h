@@ -72,7 +72,7 @@ namespace nl
 		};
 
 		database_connection();
-		database_connection(const std::string_view& database_file);
+		explicit database_connection(const std::string_view& database_file);
 		database_connection(const database_connection&& connection) noexcept;
 		database_connection& operator=(const database_connection&&) noexcept;
 
@@ -109,11 +109,24 @@ namespace nl
 			return do_query_insert(index, rel);
 		}
 
+		template<typename relation>
+		bool insert(statement_index index, const typename relation::row_t& row)
+		{
+			return do_query_insert_row(index, row);
+		}
+
 		template<typename relation, typename...T>
-		bool insert_params(statement_index index, const relation& rel ,T... args)
+		bool insert(statement_index index, const relation& rel ,T... args)
 		{
 			return do_query_insert_para(index, rel, args...);
 		}
+
+		template<typename relation, typename... T>
+		bool insert(statement_index index, const typename relation::row_t& row, T... args)
+		{
+			return do_query_insert_para_row(index, row, args...);
+		}
+
 
 		bool exec_once(statement_index index);
 		
@@ -208,6 +221,45 @@ namespace nl
 			return false;
 		}
 
+		template<typename relation, std::enable_if_t<nl::detail::has_base_relation<relation>::value,int> = 0>
+		bool do_query_insert_row(statement_index index, const typename relation::row_t & row)
+		{
+			assert(index < m_statements.size() && "Invalid statement index");
+			statements::reference statement = m_statements[index];
+			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> -1;
+			if (sqlite3_step(m_statements[begin_immediate]) == SQLITE_DONE)
+			{
+				if (!nl::detail::loop<size>::do_bind(statement, row))
+				{
+					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+					return false;
+				}
+				if (sqlite3_step(statement) == SQLITE_DONE) {
+					if (sqlite3_reset(statement) == SQLITE_SCHEMA) {
+						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+						return false;
+					}
+				}
+				else {
+					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+					return false;
+				}
+				if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE) {
+					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
+					sqlite3_reset(m_statements[begin_immediate]);
+					return true;
+				}
+			}
+			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+			return false;
+		}
+		
+		inline bool do_query_insert_row(...)
+		{
+			assert(false && "Invalid do_query_insert_row relation arguments");
+			return false;
+		}
+
 		template<typename relation, typename S,  typename... T>
 		bool do_query_insert_para(statement_index index, const relation& rel,const S& start , const T&...args)
 		{
@@ -239,6 +291,49 @@ namespace nl
 				}
 			}
 			if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE){
+				sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
+				sqlite3_reset(m_statements[stmt::begin_immediate]);
+				return true;
+			}
+
+			//error that is not caught, hopefully lool i dont know, but i hope sqlite would set an error
+			if (sqlite3_errcode(m_database_conn) == SQLITE_ERROR)
+			{
+				m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+				return false;
+			}
+			return true;
+		}
+
+		template<typename relation_t, typename S, typename... T>
+		bool do_query_insert_para_row(statement_index index, const typename relation_t::row_t& row, const S& start, const T& ...args)
+		{
+			static_assert(nl::detail::has_base_relation<relation_t>::value, "relation is not a valid relation type");
+			assert(index < m_statements.size() && "Invalid statement index");
+			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
+			constexpr size_t size = std::tuple_size_v<typename relation_t::tuple_t> -1;
+			statements::reference statement = m_statements[index];
+
+			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
+			{
+					if (!nl::detail::loop<size>::do_bind_para(statement, row, parameters)) {
+						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+						return false;
+					}
+					//execute the insert statement
+					if (sqlite3_step(statement) == SQLITE_DONE) {
+						if (sqlite3_reset(statement) == SQLITE_SCHEMA)
+						{
+							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+							return false;
+						}
+					}
+					else {
+						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+						return false;
+					}
+			}
+			if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE) {
 				sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
 				sqlite3_reset(m_statements[stmt::begin_immediate]);
 				return true;

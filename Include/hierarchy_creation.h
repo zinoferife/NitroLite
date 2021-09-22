@@ -50,13 +50,13 @@ namespace nl
 
 		//field access
 		template<class T, class H>
-		typename H::template rebind<T>::result& field(H& obj)
+		inline typename H::template rebind<T>::result& field(H& obj)
 		{
 			return obj;
 		}
 
 		template<class T, class H>
-		const typename H::template rebind<T>::result& field(const H& obj)
+		inline const typename H::template rebind<T>::result& field(const H& obj)
 		{
 			return obj;
 		}
@@ -133,6 +133,11 @@ namespace nl
 			: public unit<T, root> {
 			typedef unit<T, root> unit_type;
 			
+			//rebind cannot work in the sense that 
+			//The unit requires a root type
+			//these root types are different for each node in the chain
+			//therefore rebind unit would give a different 
+			//incorrect root in feild(H& obj) function
 			template<typename U>
 			struct rebind
 			{

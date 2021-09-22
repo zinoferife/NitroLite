@@ -17,6 +17,12 @@ namespace nl
 			typedef U type;
 		};
 
+		template<typename T>
+		struct type_to_type
+		{
+			typedef T type;
+		};
+
 
 		template<typename T, typename S>
 		struct _join_tuple_size
@@ -128,6 +134,46 @@ namespace nl
 
 		template<typename tuple_t>
 		using remove_duplicate_t = typename remove_duplicate<tuple_t>::type;
+
+		template<typename tuple, typename T> class append;
+
+		template<typename T, typename...U>
+		class append<std::tuple<U...>, T>
+		{
+		public:
+			typedef std::tuple<U..., T> type;
+		};
+
+		template<typename... T, typename... U>
+		class append<std::tuple<T...>, std::tuple<U...>>
+		{
+		public:
+			typedef std::tuple<T..., U...> type;
+		};
+
+		template<typename T, typename U>
+		using append_t = typename append<T, U>::type;
+
+		template<typename tuple> class reverse;
+
+		template<typename T>
+		class reverse<std::tuple<T>>
+		{
+		public:
+			typedef std::tuple<T> type;
+		};
+
+		template<typename T, typename... S>
+		class reverse<std::tuple<T, S...>>
+		{
+		public:
+			typedef append_t< typename reverse<std::tuple<S...>>::type, T> type;
+		};
+
+		template<typename tuple>
+		using reverse_t = typename reverse<tuple>::type;
+
+
 	}
 
 
