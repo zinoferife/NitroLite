@@ -11,7 +11,7 @@
 	// over engineering by ewomagram !!!!!
 	//exceptions are thrown by the std algorithms, exceptions are not handled by the class, i think it would better to catch the excpetions at application level not libary level, have more handling capabilites plus can inform the user
 	//TODO: include std::error_code in functions relations, add Relation error category to the system errors and exceptions can be handled like boost
-
+	//overload these functions so that one throws an exception and the other passes an std::error_code&
 
 #include <cstdint>
 #include <regex>
@@ -124,6 +124,18 @@ namespace nl {
 			container_t::emplace_back(std::move(row));
 			return container_t::back();
 		}
+
+		inline typename size_t append_relation(const relation_t& rel)
+		{
+			if (rel.empty())
+			{
+				return size_t(0);
+			}
+			std::back_insert_iterator<container_t> inserter(*this);
+			std::copy(rel.begin(), rel.end(), inserter);
+			return size_t(rel.size());
+		}
+
 		template<size_t col>
 		inline const typename std::tuple_element_t<col, tuple_t>& get(size_t row) const
 		{
@@ -167,6 +179,16 @@ namespace nl {
 			}
 			found_row = *it;
 			return true;
+		}
+
+		inline constexpr size_t get_column_count() const
+		{
+			return column_count;
+		}
+
+		auto get_as_string(size_t row, size_t column)->std::string const
+		{
+			return nl::detail::loop<column_count - 1>::get_as_string(tuple_at(row), column);
 		}
 
 		template<size_t I>
@@ -417,7 +439,7 @@ namespace nl {
 		}
 
 
-		//assumes that both are it is sorted
+		//assumes that both are it is sorted, lexigraphically, throws logical error other wise
 		void merge(const relation_t& rel)
 		{
 				relation_t ret(container_t::size() + rel.size());
@@ -435,9 +457,16 @@ namespace nl {
 				(*this) = std::move(ret);
 		}
 
-		void Append_back(const relation_t& rel)
+		///assumes they are both sorted on I, throws logical error otherwise
+		template<size_t I>
+		relation_t intersect_on(const relation_t& rel)
 		{
-			std::copy(rel.begin(), rel.end(), std::back_insert_iterator<container_t>(*this));
+			relation_t ret;
+			std::set_intersection(container_t::begin(), container_t::end(), rel.begin(), rel.end(),
+				std::back_insert_iterator<container_t>(ret), [&](const tuple_t& tuple1, const tuple_t& tuple2)-> bool {
+					return (std::get<I>(tuple1) < std::get<I>(tuple2));
+			});
+			return std::move(ret);
 		}
 
 		bool is_sub_relation(const relation_t& rel)
@@ -667,7 +696,7 @@ namespace nl {
 	size_t relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::row_id{ -1 };
 
 	template<template <class, class> class container, typename...val>
-	std::array<const char*, sizeof...(val)> relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::val_types_names{ (nl::detail::get_type_name<val>())... };
+	std::array<const char*, sizeof...(val)> relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::val_types_names{ (nl::get_type_name<val>())... };
 
 	//set relation: This is turning out to be a dead end
 	//might just have to give seq containers the ability to maintain a sorted list
@@ -783,5 +812,6 @@ namespace nl {
 
 
 	};
+
 };
 

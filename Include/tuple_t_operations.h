@@ -116,7 +116,7 @@ namespace nl
 
 		template<typename tuple_t> struct remove_duplicate;
 
-		template<typename U> 
+		template<typename U>
 		struct remove_duplicate<std::tuple<U>>
 		{
 			typedef void type;
@@ -172,9 +172,5 @@ namespace nl
 
 		template<typename tuple>
 		using reverse_t = typename reverse<tuple>::type;
-
-
 	}
-
-
 }

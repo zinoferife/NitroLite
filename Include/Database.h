@@ -41,7 +41,7 @@ namespace nl
 		sql_extension_func_aggregate() = default;
 	};
 
-	class database_connection
+	class database
 	{
 	//callbacks for sqlite
 	public:
@@ -71,19 +71,19 @@ namespace nl
 			BADSTMT = size_t(-1)
 		};
 
-		database_connection();
-		explicit database_connection(const std::string_view& database_file);
-		database_connection(const database_connection&& connection) noexcept;
-		database_connection& operator=(const database_connection&&) noexcept;
+		database();
+		explicit database(const std::string_view& database_file);
+		database(const database&& connection) noexcept;
+		database& operator=(const database&&) noexcept;
 
-		~database_connection();
+		~database();
 
 		statement_index prepare_query(const std::string& query);
 		statement_index prepare_query(const nl::query& query);
 		
 		inline const statements& get_statements() const { return m_statements; }
 		inline const std::string& get_error_msg() const { return m_error_msg; }
-		void remove_statement(nl::database_connection::statement_index index);
+		void remove_statement(nl::database::statement_index index);
 		bool is_open() const { return (m_database_conn != nullptr); }
 		bool connect(const std::string_view& file);
 		
@@ -339,13 +339,11 @@ namespace nl
 				return true;
 			}
 
-			//error that is not caught, hopefully lool i dont know, but i hope sqlite would set an error
-			if (sqlite3_errcode(m_database_conn) == SQLITE_ERROR)
-			{
-				m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-				return false;
-			}
-			return true;
+			//error that is not caught, hopefully lool i dont know,
+			//might also get an SQLITE_BUSY if a write lock on the database cant be aquired 
+			//but i hope sqlite would set an error
+			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+			return false;
 		}
 
 		template<typename relation_t, typename S, typename... T>
@@ -357,7 +355,7 @@ namespace nl
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> -1;
 			statements::reference statement = m_statements[index];
 			
-			if(nl::detail::loop<size>::template do_bind_para(statement, row, parameters))
+			if (nl::detail::loop<size>::template do_bind_para(statement, row, parameters))
 			{
 				if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
 				{
@@ -368,7 +366,8 @@ namespace nl
 							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 							return false;
 						}
-					}else{
+					}
+					else {
 						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 						return false;
 					}
@@ -378,14 +377,11 @@ namespace nl
 					sqlite3_reset(m_statements[stmt::begin_immediate]);
 					return true;
 				}
-				//error that is not caught, hopefully lool i dont know, but i hope sqlite would set an error
-				if (sqlite3_errcode(m_database_conn) == SQLITE_ERROR)
-				{
-					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-					return false;
-				}
-				return true;
+
 			}
+			//error that is not caught, hopefully lool i dont know,
+			//might also get an SQLITE_BUSY if a write lock on the database cant be aquired 
+			//but i hope sqlite would set an error
 			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 			return false;
 		}
@@ -397,8 +393,8 @@ namespace nl
 	private:
 		//cannot copy or assign a database connection, every created on is a new connection, 
 		//a database connection is a resource that is usually only one in a thread
-		database_connection(const database_connection&) = delete;
-		database_connection& operator=(const database_connection&) = delete;
+		database(const database&) = delete;
+		database& operator=(const database&) = delete;
 		
 
 

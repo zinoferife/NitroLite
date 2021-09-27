@@ -4,10 +4,17 @@
 #include <array>
 namespace nl
 {
+	//for _multiples, the row_added is a count of added
+	//it would be very difficult to specify which rows were added since add can happen
+	//at any point in the table not just at the end,
+	//however if add only appened to the end, then (table::end() - row_added) - 1 should give a start of where
+	// the added range started from 
 	enum class notifications
 	{
 		add,
+		add_multiple,
 		remove,
+		remove_multiple,
 		update,
 		merge,
 		transform

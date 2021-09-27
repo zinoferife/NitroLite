@@ -107,7 +107,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\ferif\source\repos\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\ferif\source\repos\include;$(SolutionDir)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -149,7 +149,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\ferif\source\repos\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\ferif\source\repos\include;$(SolutionDir)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -166,6 +166,7 @@
     <ClInclude Include="Include\Database.h" />
     <ClInclude Include="Include\hierarchy_creation.h" />
     <ClInclude Include="Include\nl_time.h" />
+    <ClInclude Include="Include\nl_uuid.h" />
     <ClInclude Include="Include\query.h" />
     <ClInclude Include="Include\relation.h" />
     <ClInclude Include="Include\relation_buffer.h" />
@@ -174,6 +175,7 @@
     <ClInclude Include="Include\table_listener.h" />
     <ClInclude Include="Include\tuple_loop.h" />
     <ClInclude Include="Include\tuple_t_operations.h" />
+    <ClInclude Include="Include\nl_types.h" />
     <ClInclude Include="Include\Visitor.h" />
     <ClInclude Include="nl_visitor.h" />
     <ClInclude Include="pch.h" />

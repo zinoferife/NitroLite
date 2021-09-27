@@ -2,12 +2,12 @@
 #include "Database.h"
 std::int32_t nl::sql_extension_func_aggregate::sTextEncoding = SQLITE_UTF8;
 
-nl::database_connection::database_connection()
+nl::database::database()
 :m_database_conn(nullptr){
 	
 }
 
-nl::database_connection::database_connection(const std::string_view& database_file)
+nl::database::database(const std::string_view& database_file)
 :m_database_conn(nullptr){
 	if (database_file.empty()){
 		if (sqlite3_open(nullptr, &m_database_conn) == SQLITE_ERROR){
@@ -27,7 +27,7 @@ nl::database_connection::database_connection(const std::string_view& database_fi
 
 }
 
-nl::database_connection::database_connection(const database_connection&& connection) noexcept
+nl::database::database(const database&& connection) noexcept
 {
 	if (m_database_conn != nullptr){
 		sqlite3_close(m_database_conn);
@@ -37,7 +37,7 @@ nl::database_connection::database_connection(const database_connection&& connect
 	m_error_msg = std::move(connection.m_error_msg);
 }
 
-nl::database_connection& nl::database_connection::operator=(const database_connection&& connection) noexcept
+nl::database& nl::database::operator=(const database&& connection) noexcept
 {
 	// TODO: insert return statement here
 	if (m_database_conn != nullptr){
@@ -49,7 +49,7 @@ nl::database_connection& nl::database_connection::operator=(const database_conne
 	return (*this);
 }
 
-nl::database_connection::~database_connection()
+nl::database::~database()
 {
 	if (!m_statements.empty()) {
 		for (auto& stmt : m_statements){
@@ -61,7 +61,7 @@ nl::database_connection::~database_connection()
 	}
 }
 
-nl::database_connection::statement_index nl::database_connection::prepare_query(const std::string& query)
+nl::database::statement_index nl::database::prepare_query(const std::string& query)
 {
 	assert(!query.empty() && "Prepare query is empty");
 	if (!sqlite3_complete(query.c_str())){
@@ -78,12 +78,12 @@ nl::database_connection::statement_index nl::database_connection::prepare_query(
 	return BADSTMT;
 }
 
-nl::database_connection::statement_index nl::database_connection::prepare_query(const nl::query& query)
+nl::database::statement_index nl::database::prepare_query(const nl::query& query)
 {
 	return prepare_query(query.get_query());
 }
 
-void nl::database_connection::remove_statement(nl::database_connection::statement_index index)
+void nl::database::remove_statement(nl::database::statement_index index)
 {
 	assert(index < m_statements.size() && "Invalid statement index to remove");
 	auto iter = m_statements.begin();
@@ -91,37 +91,37 @@ void nl::database_connection::remove_statement(nl::database_connection::statemen
 	m_statements.erase(iter);
 }
 
-bool nl::database_connection::set_commit_handler(commit_callback callback, void* UserData)
+bool nl::database::set_commit_handler(commit_callback callback, void* UserData)
 {
 	return false;
 }
 
-bool nl::database_connection::set_trace_handler(trace_callback callback, std::uint32_t mask, void* UserData)
+bool nl::database::set_trace_handler(trace_callback callback, std::uint32_t mask, void* UserData)
 {
 	return false;
 }
 
-bool nl::database_connection::set_busy_handler(busy_callback callback, void* UserData)
+bool nl::database::set_busy_handler(busy_callback callback, void* UserData)
 {
 	return false;
 }
 
-bool nl::database_connection::set_auth_handler(auth callback, void* UserData)
+bool nl::database::set_auth_handler(auth callback, void* UserData)
 {
 	return false;
 }
 
-void nl::database_connection::set_progress_handler(progress_callback callback, void* UserData, int frq)
+void nl::database::set_progress_handler(progress_callback callback, void* UserData, int frq)
 {
 }
 
-bool nl::database_connection::register_extension(const sql_extension_func_aggregate& ext)
+bool nl::database::register_extension(const sql_extension_func_aggregate& ext)
 {
 	return (sqlite3_create_function(m_database_conn, ext.fName.c_str(), ext.fArgCount, nl::sql_extension_func_aggregate::sTextEncoding,
 		ext.fUserData, ext.fFunc, ext.fStep, ext.fFinal) == SQLITE_OK);
 }
 
-bool nl::database_connection::connect(const std::string_view& file)
+bool nl::database::connect(const std::string_view& file)
 {
 	if (file.empty()) {
 		if (sqlite3_open(nullptr, &m_database_conn) == SQLITE_ERROR) {
@@ -139,7 +139,7 @@ bool nl::database_connection::connect(const std::string_view& file)
 	return false;
 }
 
-bool nl::database_connection::exec_once(statement_index index)
+bool nl::database::exec_once(statement_index index)
 {
 	assert(index < m_statements.size() && "Invalid statement index");
 	statements::reference statement = m_statements[index];

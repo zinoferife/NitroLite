@@ -3,9 +3,11 @@
 #include <fmt/format.h>
 #include <SQLite/sqlite3.h>
 
+#include "nl_types.h"
 #include "visitor.h"
 #include "tuple_t_operations.h"
 #include "nl_time.h"
+#include "nl_uuid.h"
 namespace nl
 {
 	template<size_t...I>
@@ -14,7 +16,7 @@ namespace nl
 	using select_all = std::make_index_sequence<relation::column_count>;
 
 	template<size_t I, typename row_t>
-	inline auto row_value(const row_t& tuple)
+	inline const auto& row_value(const row_t& tuple)
 	{
 		return std::get<I>(tuple);
 	}
@@ -23,50 +25,7 @@ namespace nl
 	{
 		return std::get<I>(tuple);
 	}
-	template<typename T>
-	using alloc_t = std::allocator<T>;
-
-	template<typename ty>
-	using hash_t = std::hash<ty>;
-
-	template<typename ty>
-	using key_comp_map_t = std::equal_to<ty>;
-
-	template<typename ty>
-	using key_comp_set_t = std::less<ty>;
-
-	struct linear_relation_tag {};
-	struct map_relation_tag {};
-
-
-	template<typename T>
-	using order_asc = std::less<T>;
-
-	template<typename T>
-	using order_dec = std::greater<T>;
-
-
-	template< typename container>
-	class relation;
-	struct linear_relation_tag;
-	struct set_relation_tag;
-	struct hash_relation_tag;
-	struct map_relation_tag;
-
-
-	template<typename...T>
-	using vector_relation = relation<std::vector<std::tuple<T...>>>;
-	template<typename...T>
-	using list_relation = relation<std::list<std::tuple<T...>>>;
-	template<typename...T>
-	using set_relation = relation<std::set<std::tuple<T...>>>;
-
-	template<size_t offset, typename tuple_t>
-	constexpr size_t j_ = std::tuple_size_v<tuple_t> + offset;
-
-	using blob_t = std::vector<std::uint8_t>;
-
-
+	
 	namespace detail
 	{
 		//sqlite only wants 5 types: integral, floating_point, string, blob and null
@@ -79,15 +38,15 @@ namespace nl
 		template<typename T>
 		class is_database_type
 		{
-			using special_types = std::tuple<std::string, blob_t, nullptr_t, date_time_t>;
+			using special_types = std::tuple<std::string, blob_t, nullptr_t, date_time_t, uuid>;
 		public:
 			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || index_of<special_types, T>::value >= 0) };
 		};
 
 		
-
+		//for SQL with ? instead of a parameter
 		template<size_t count, typename database_stmt, typename tuple_t>
-		inline bool handle(database_stmt statement, const tuple_t& tuple)
+		inline bool handle_bind(database_stmt statement, const tuple_t& tuple)
 		{
 			//col_id is the value in the tuple
 			//sqlite wants positional parameters to start from 1 not 0 so add on to col_id to get its pos
@@ -140,6 +99,11 @@ namespace nl
 				auto rep = nl::to_representation(std::get<col_id>(tuple));
 				return (SQLITE_OK == sqlite3_bind_int64(statement, position, rep));
 			}
+			else if constexpr (std::is_same_v<arg_type, uuid>)
+			{
+				auto blob = std::get<col_id>(tuple).to_blob();
+				return (SQLITE_OK == sqlite3_bind_blob(statement, position, blob.data(), blob.size(), SQLITE_TRANSIENT));
+			}
 
 			else
 			{
@@ -149,7 +113,7 @@ namespace nl
 		}
 
 		template<size_t count,typename database_stmt_t, typename tuple_t, typename para_array_t>
-		inline bool handle_para(database_stmt_t statement, const tuple_t& tuple, const para_array_t& array)
+		inline bool handle_bind_para(database_stmt_t statement, const tuple_t& tuple, const para_array_t& array)
 		{
 			constexpr size_t col_id = std::tuple_size_v<tuple_t> - (count + 1);
 			using arg_type = typename std::decay_t<std::tuple_element_t<col_id, tuple_t>>;
@@ -212,6 +176,11 @@ namespace nl
 				auto rep = nl::to_representation(std::get<col_id>(tuple));
 				return (SQLITE_OK == sqlite3_bind_int64(statement, position, rep));
 			}
+			else if constexpr (std::is_same_v<arg_type, uuid>)
+			{
+				auto blob = std::get<col_id>(tuple).to_blob();
+				return (SQLITE_OK == sqlite3_bind_blob(statement, position, blob.data(), blob.size(), SQLITE_TRANSIENT));
+			}
 			else
 			{
 				return false;
@@ -221,7 +190,7 @@ namespace nl
 
 		//auto was having problems deducing the return type, hence the need for this ugliness 
 		template<typename Arg_type, size_t count, typename database_stmt>
-		inline std::tuple<Arg_type> handle_col(database_stmt statement)
+		inline std::tuple<Arg_type> handle_retrive(database_stmt statement)
 		{
 			const size_t col = (size_t)sqlite3_column_count(statement) - (count + 1);
 			using arg_t = typename std::decay_t<Arg_type>;
@@ -273,7 +242,21 @@ namespace nl
 				auto rep = sqlite3_column_int64(statement, col);
 				return std::make_tuple(from_representation((clock::duration::rep)rep));
 			}
-
+			else if constexpr (std::is_same_v<arg_t, uuid>)
+			{
+				blob_t::value_type* val_ptr = static_cast<blob_t::value_type*>(sqlite3_column_blob(statement, col));
+				if (val_ptr)
+				{
+					const size_t size = sqlite3_column_bytes(statement, col);
+					if (size == 16) //128 bit ids
+					{
+						nl::uuid id;
+						std::copy(val_ptr, val_ptr + size, id.begin());
+						return std::make_tuple(id);
+					}
+				}
+				return std::make_tuple(nl::uuid(boost::uuids::nil_uuid()));
+			}
 
 
 			else if constexpr (std::is_same_v<arg_t, std::basic_string<wchar_t>>)
@@ -310,7 +293,7 @@ namespace nl
 			template<typename database_stmt, typename tuple_t>
 			static bool do_bind(database_stmt statement, const tuple_t& tuple)
 			{
-				bool b = handle<count>(statement, tuple);
+				bool b = handle_bind<count>(statement, tuple);
 				bool b2 = loop<count - 1>::do_bind(statement, tuple);
 				return (b2 && b);
 			}
@@ -318,7 +301,7 @@ namespace nl
 			template<typename database_stmt_t, typename tuple_t, typename parameter_array_t>
 			static bool do_bind_para(database_stmt_t statement, const tuple_t& tuple, const parameter_array_t& parray)
 			{
-				bool b = handle_para<count>(statement, tuple, parray);
+				bool b = handle_bind_para<count>(statement, tuple, parray);
 				bool b2 = loop<count - 1>::do_bind_para(statement, tuple, parray);
 				return (b && b2);
 			}
@@ -336,7 +319,7 @@ namespace nl
 				constexpr size_t col = (std::tuple_size_v<tuple_t> - (count + 1));
 				using arg_type = std::tuple_element_t<col, tuple_t>;
 
-				auto t = handle_col<arg_type, count>(statement);
+				auto t = handle_retrive<arg_type, count>(statement);
 				auto t2 = loop<count - 1>::template do_retrive<tuple_t>(statement);
 				return std::tuple_cat(std::move(t), std::move(t2));
 			}
@@ -387,6 +370,9 @@ namespace nl
 					else if constexpr (std::is_floating_point_v<arg_type>){
 						return fmt::format("{:.4f}", std::get<col>(tuple));
 					}
+					else if constexpr (std::is_same_v<nl::uuid, arg_type>) {
+						return fmt::format("{:q}", std::get<col>(tuple));
+					}
 					else if constexpr(fmt::is_formattable<arg_type>::value) {
 						return fmt::format("{}", std::get<col>(tuple));
 					}
@@ -408,7 +394,7 @@ namespace nl
 				{
 					//might work? static_cast might be a problem
 					if constexpr (std::is_convertible_v<T, arg_type>){
-						std::get<col>(tuple) = static_cast<arg_type>(value);
+						std::get<col>(tuple) = static_cast<const arg_type&>(value);
 						return;
 					}
 				}
@@ -438,7 +424,7 @@ namespace nl
 			template<typename database_stmt, typename tuple_t>
 			static bool do_bind(database_stmt statement, const tuple_t& tuple)
 			{
-				return handle<0>(statement, tuple);
+				return handle_bind<0>(statement, tuple);
 			}
 
 			template<typename tuple_t, typename database_stmt_t>
@@ -448,13 +434,13 @@ namespace nl
 				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1);
 				using arg_type = std::tuple_element_t<col, tuple_t>;
 
-				return handle_col<arg_type, 0>(statement);
+				return handle_retrive<arg_type, 0>(statement);
 			}
 
 			template<typename database_stmt_t, typename tuple_t, typename parameter_array_t>
 			static bool do_bind_para(database_stmt_t statement, const tuple_t& tuple, const parameter_array_t& parray)
 			{
-				return  handle_para<0>(statement, tuple, parray);
+				return  handle_bind_para<0>(statement, tuple, parray);
 			
 			}
 
@@ -501,6 +487,9 @@ namespace nl
 					else if constexpr (std::is_floating_point_v<arg_type>) {
 						return fmt::format("{:.4f}", std::get<col>(tuple));
 					}
+					else if constexpr (std::is_same_v<nl::uuid, arg_type>) {
+						return fmt::format("{:q}", std::get<col>(tuple));
+					}
 					else if constexpr (fmt::is_formattable<arg_type>::value) {
 						return fmt::format("{}", std::get<col>(tuple));
 					}
@@ -522,7 +511,7 @@ namespace nl
 				{
 					//might work? static_cast might be a problem
 					if constexpr (std::is_convertible_v<T, arg_type>) {
-						std::get<col>(tuple) = static_cast<arg_type>(value);
+						std::get<col>(tuple) = static_cast<const arg_type&>(value);
 						return;
 					}
 				}
@@ -641,27 +630,36 @@ namespace nl
 		//get relation column type as string
 		namespace helper
 		{
-			static const std::uint32_t FRONT_SIZE = sizeof("nl::detail::helper::get_type_name_helper<") - 1u;
-			static const std::uint32_t BACK_SIZE = sizeof(">::get_type_name") - 1u;
+			static constexpr std::uint32_t FRONT_SIZE = sizeof("nl::detail::helper::get_type_name_helper<") - 1u;
+			static constexpr std::uint32_t BACK_SIZE = sizeof(">::get_type_name") - 1u;
 
 			template<typename T>
 			struct get_type_name_helper
 			{
 				static const char* get_type_name() {
-					static const size_t size = sizeof(__FUNCTION__) - FRONT_SIZE - BACK_SIZE;
+					static constexpr size_t size = sizeof(__FUNCTION__) - FRONT_SIZE - BACK_SIZE;
 					static char type_name[size] = {};
 					std::memcpy(type_name, __FUNCTION__ + FRONT_SIZE, size - 1u);
 					return type_name;
 				}
 			};
 		}
-
-		template<typename T>
-		inline const char* get_type_name()
-		{
-			return helper::get_type_name_helper<T>::get_type_name();
-		}
-
-
 	}
+
+	template<typename T>
+	inline const char* get_type_name()
+	{
+		return detail::helper::get_type_name_helper<T>::get_type_name();
+	}
+
+	template<typename relation1, typename relation2>
+	class join_relation
+	{
+		typedef typename relation1::tuple_t rel_tuple1;
+		typedef typename relation2::tuple_t rel_tuple2;
+		typedef typename detail::append<rel_tuple1, rel_tuple2>::type new_relation_tuple;
+	public:
+		typedef nl::relation<typename relation1::template container_t<new_relation_tuple, nl::alloc_t<new_relation_tuple>>> type;
+	};
+
 }
