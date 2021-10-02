@@ -47,7 +47,7 @@ namespace nl
 		static const char* to_string(const uuid& id)
 		{
 			static constexpr const char* text = "0123456789ABCDEF";
-			static std::array<char, 32> characters = {};
+			static std::array<char, 33> characters = {};
 			std::uint8_t bottom_mask = 0x0F;
 			std::uint8_t top_mask = 0xF0;
 			size_t i = 0;
@@ -65,7 +65,7 @@ namespace nl
 
 }
 
-//allow fmt formart uuid
+//allow fmt format uuid
 namespace fmt
 {
 	template<>

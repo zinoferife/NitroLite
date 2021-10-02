@@ -10,10 +10,6 @@
 #include "nl_uuid.h"
 namespace nl
 {
-	template<size_t...I>
-	using select = std::index_sequence<I...>;
-	template<typename relation>
-	using select_all = std::make_index_sequence<relation::column_count>;
 
 	template<size_t I, typename row_t>
 	inline const auto& row_value(const row_t& tuple)
@@ -346,7 +342,7 @@ namespace nl
 				using arg_type = std::tuple_element_t<col, tuple_t>;
 				if (col == column)
 				{
-					put_in = T(std::get<col>(tuple));
+					put_in = std::get<col>(tuple);
 					return;
 				}
 				loop<count - 1>::get_in(tuple, put_in, column);
@@ -463,7 +459,7 @@ namespace nl
 				using arg_type = std::tuple_element_t<col, tuple_t>;
 				if (col == column)
 				{
-					put_in = T(std::get<col>(tuple));
+					put_in = std::get<col>(tuple);
 					return;
 				}
 			}
@@ -521,8 +517,8 @@ namespace nl
 		template<size_t I, typename T, typename S>
 		struct comp_tuple_with_value
 		{
-			bool operator()(const T& t, S s) const { return std::get<I>(t) < s; }
-			bool operator()(S s, const T& t) const { return s < std::get<I>(t); }
+			bool operator()(const T& t, const S& s) const { return std::get<I>(t) < s; }
+			bool operator()(const S& s, const T& t) const { return s < std::get<I>(t); }
 		};
 
 		template<typename rel, typename Compare, typename execution_policy = std::execution::sequenced_policy, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>

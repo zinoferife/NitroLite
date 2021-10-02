@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include <variant>
+#include "tuple_t_operations.h"
 namespace nl
 {
 	template<typename T>
@@ -44,4 +46,22 @@ namespace nl
 	constexpr size_t j_ = std::tuple_size_v<tuple_t> +offset;
 
 	using blob_t = std::vector<std::uint8_t>;
+
+	template<typename tuple> struct variant_no_duplicate;
+
+	template<typename ... val>
+	struct variant_no_duplicate<std::tuple<val...>>
+	{
+		using type = std::variant<val...>;
+	};
+
+	template<typename tuple>
+	struct variant
+	{
+	private:
+		using no_duplicate = nl::detail::remove_duplicate_t<tuple>;
+		using tuple_t = std::conditional_t<std::is_void_v<no_duplicate>, tuple, no_duplicate>;
+	public:
+		using type = typename variant_no_duplicate<tuple_t>::type;
+	};
 }

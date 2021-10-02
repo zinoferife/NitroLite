@@ -10,15 +10,16 @@ namespace nl
 	using clock = std::chrono::system_clock;
 	using date_time_t = std::chrono::system_clock::time_point;
 	using nl_date_time_durtation_t = std::chrono::system_clock::duration;
-	std::string to_string_date(const date_time_t& date_time);
-	std::string to_string_time(const date_time_t& date_time);
+	typedef std::chrono::duration<int, std::ratio<86400>> days;
+	extern std::string to_string_date(const date_time_t& date_time);
+	extern std::string to_string_time(const date_time_t& date_time);
 	
 	//wrong-> might still be useful so left in
-	date_time_t from_string_date(const std::string& date_time);
-	date_time_t from_string_time(const std::string& date_time);
+	extern date_time_t from_string_date(const std::string& date_time);
+	extern date_time_t from_string_time(const std::string& date_time);
 
 
 	//saving the clock data ass representations from epoch
-	clock::duration::rep to_representation(const date_time_t& time);
-	date_time_t from_representation(const clock::duration::rep value);
+	extern clock::duration::rep to_representation(const date_time_t& time);
+	extern date_time_t from_representation(const clock::duration::rep value);
 }

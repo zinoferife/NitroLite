@@ -1,8 +1,14 @@
 #pragma once
 #include <tuple>
 #include <type_traits>
+#include <utility>
 namespace nl
 {
+	template<size_t...I>
+	using select = std::index_sequence<I...>;
+	template<typename relation>
+	using select_all = std::make_index_sequence<relation::column_count>;
+
 	namespace detail
 	{
 		template<bool flag, typename T, typename U>
