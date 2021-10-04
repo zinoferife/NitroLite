@@ -1,7 +1,7 @@
 #pragma once
 #include <utility>
 #include <cassert>
-#include <list>
+#include <vector>
 
 //implementation based on Molecular Musings's awesome blog 
 // at: https://blog.molecular-matters.com
@@ -57,21 +57,32 @@ namespace nl {
 			});
 		}
 
-		void notify(Args... arg) const
+		void notify(Args&&... arg) const
 		{
 			if (!m_listeners.empty())
 			{
 				for (auto iter = m_listeners.begin(); iter != m_listeners.end(); iter++)
 				{
 					assert(iter->second != nullptr && "Cannot notify an empty listeneer");
-					(*iter).second((*iter).first, arg...);
+					(*iter).second((*iter).first, std::forward<Args>(arg)...);
 				}
 			}
 		}
 
+		void notify(Args&... arg) const
+		{
+			if (!m_listeners.empty())
+			{
+				for (auto iter = m_listeners.begin(); iter != m_listeners.end(); iter++)
+				{
+					assert(iter->second != nullptr && "Cannot notify an empty listeneer");
+					(*iter).second((*iter).first, std::forward<Args>(arg)...);
+				}
+			}
+		}
 		
 
 	private:
-		std::list<listener> m_listeners;
+		std::vector<listener> m_listeners;
 	};
 }

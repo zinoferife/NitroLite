@@ -195,7 +195,7 @@ namespace nl {
 
 		//returns an int to indicate index not found with -1
 		template<size_t I>
-		int find_index_of(const typename std::tuple_element_t<I, tuple_t>&& value)
+		int find_index_of(const typename std::tuple_element_t<I, tuple_t>& value)
 		{
 			//should only work on vector containers
 			auto it = std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
@@ -400,7 +400,13 @@ namespace nl {
 		void quick_sort()
 		{
 			if(container_t::empty()) return;
-			qsort<I>(container_t::begin(), container_t::end());
+			qsort<I, order_by>(container_t::begin(), container_t::end());
+		}
+		template<bool order = true>
+		void quick_sort(size_t column)
+		{
+			if (container_t::empty()) return;
+			nl::detail::loop<column_count - 1>::template quick_sort_column<relation_t, order>(*this, column);
 		}
 
 		void unpack_row_in(size_t row, val& ...args){
@@ -505,6 +511,14 @@ namespace nl {
 		
 		template<size_t I>
 		auto min_max_on() const noexcept
+		{
+			return std::minmax_element(container_t::begin(), container_t::end(), [&](tuple_t& lhs, tuple_t& rhs) {
+				return std::get<I>(lhs) < std::get<I>(rhs);
+				});
+		}
+
+		template<size_t I>
+		auto min_max_on() noexcept
 		{
 			return std::minmax_element(container_t::begin(), container_t::end(), [&](tuple_t& lhs, tuple_t& rhs) {
 				return std::get<I>(lhs) < std::get<I>(rhs);
@@ -715,24 +729,24 @@ namespace nl {
 			return *(std::next(container_t::begin(), row));
 		}
 
-		template<size_t I>
+		template<size_t I, typename order = nl::order_asc<elem_t<I>>>
 		inline void qsort(typename container_t::iterator first, typename container_t::iterator  last)
 		{
 			typedef typename container_t::iterator iterator;
 			if (first == last) return;
 			auto pivot = *std::next(first, std::distance(first, last) / 2);
 			iterator middle1 = std::partition(first, last, [pivot](const auto& tuple_elem) {
-				return  (std::get<I>(tuple_elem) < std::get<I>(pivot));
+				return  order{}(std::get<I>(tuple_elem), std::get<I>(pivot));
 				});
 
 			iterator middle2 = std::partition(middle1, last, [pivot](const auto& tuple_elem) {
-				return !(std::get<I>(pivot) < std::get<I>(tuple_elem));
+				return !order{}(std::get<I>(pivot), std::get<I>(tuple_elem));
 				});
-			qsort<I>(first, middle1);
-			qsort<I>(middle2, last);
+			qsort<I, order>(first, middle1);
+			qsort<I, order>(middle2, last);
 		};
 	};
-
+	 
 	//static data, so ugly
 	template<template<class, class> class container, typename... val>
 	typename relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::row_t  relation<container<std::tuple<val...>, alloc_t<std::tuple<val...>>>>::default_row{};

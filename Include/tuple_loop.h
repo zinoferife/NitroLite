@@ -397,6 +397,29 @@ namespace nl
 				return loop<count - 1>::put_value_in(tuple, value, column);
 			}
 
+			//true assending, false desending
+			template<typename relation_t, bool order = true>
+			static void quick_sort_column(relation_t & relation, size_t column)
+			{
+				assert((column < std::tuple_size_v<typename relation_t::tuple_t>) && "Invalid \'column\' in quick_sort_column");
+				constexpr size_t col = (std::tuple_size_v<typename relation_t::tuple_t> -(count + 1));
+				using arg_type = std::decay_t<std::tuple_element_t<col, typename relation_t::tuple_t>>;
+				if constexpr (order)
+				{
+					if (col == column){
+						relation.template quick_sort<col, nl::order_asc<arg_type>>();
+						return;
+					}
+					return loop<count - 1>::template quick_sort_column<relation_t, true>(relation, column);
+				}
+				else{
+					if (col == column){
+						relation.template quick_sort<col, nl::order_dec<arg_type>>();
+						return;
+					}
+					return loop<count - 1>::template quick_sort_column<relation_t, false>(relation, column);
+				}
+			}
 		};
 
 		template<>
@@ -512,6 +535,28 @@ namespace nl
 					}
 				}
 			}
+
+			template<typename relation_t, bool order = true>
+			static void quick_sort_column(relation_t& relation, size_t column)
+			{
+				assert((column < std::tuple_size_v<typename relation_t::tuple_t>) && "Invalid \'column\' in quick_sort_column");
+				constexpr size_t col = (std::tuple_size_v<typename relation_t::tuple_t> - 1);
+				using arg_type = std::decay_t<std::tuple_element_t<col, typename relation_t::tuple_t>>;
+				if constexpr (order)
+				{
+					if (col == column) {
+						relation.template quick_sort<col, nl::order_asc<arg_type>>();
+						return;
+					}
+				}
+				else {
+					if (col == column) {
+						relation.template quick_sort<col, nl::order_dec<arg_type>>();
+						return;
+					}
+				}
+			}
+
 		};
 
 		template<size_t I, typename T, typename S>
