@@ -97,13 +97,14 @@ namespace nl {
 			}
 		}
 
-		auto insert(tuple_t& tuple)
+		inline typename container_t::iterator insert(tuple_t& tuple)
 		{
-			return container_t::push_back(tuple);
+			container_t::push_back(tuple);
+			return (--container_t::end());
 		}
 
 		template<size_t I>
-		auto average() -> double
+		inline double average()
 		{
 			if constexpr (std::is_integral_v<elem_t<I>> || std::is_floating_point_v<elem_t<I>>)
 			{
@@ -117,17 +118,17 @@ namespace nl {
 			return 0.0;
 		}
 
-		inline typename container_t::reference add(const val& ... args)
+		inline typename container_t::iterator add(const val& ... args)
 		{
 			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add");
 			container_t::emplace_back(args...);
-			return container_t::back();
+			return(--container_t::end());
 		}
 
-		inline typename container_t::reference add(const row_t& row)
+		inline typename container_t::iterator add(const row_t& row)
 		{
 			container_t::emplace_back(std::move(row));
-			return container_t::back();
+			return (--container_t::end());
 		}
 
 		inline typename size_t append_relation(const relation_t& rel)
@@ -167,9 +168,11 @@ namespace nl {
 
 
 		template<size_t...I>
-		inline void update_row(size_t row, const elem_t<I>& ... args)
+		inline typename container_t::const_iterator update_row(size_t row, const elem_t<I>& ... args)
 		{
+			if (row > container_t::size()) return container_t::cend();
 			((std::get<I>(container_t::operator[](row)) = args), ...);
+			return (std::next(container_t::begin(), row));
 		}
 
 
@@ -180,22 +183,24 @@ namespace nl {
 		}
 
 		template<size_t col>
-		bool find_on(const typename std::tuple_element_t<col, tuple_t>& value, tuple_t& found_row) const
+		inline typename container_t::const_iterator find_on(const typename std::tuple_element_t<col, tuple_t>& value) const noexcept
 		{
-			auto it = std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
+			return std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) { 
 				return(value == std::get<col>(tuple));
 				});
-			if (it == container_t::end())
-			{
-				return false;
-			}
-			found_row = *it;
-			return true;
+		}
+
+		template<size_t col>
+		inline typename container_t::iterator find_on(const typename std::tuple_element_t<col, tuple_t>& value) noexcept
+		{
+			return std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
+				return(value == std::get<col>(tuple));
+				});
 		}
 
 		//returns an int to indicate index not found with -1
 		template<size_t I>
-		int find_index_of(const typename std::tuple_element_t<I, tuple_t>& value)
+		inline int find_index_of(const typename std::tuple_element_t<I, tuple_t>& value)
 		{
 			//should only work on vector containers
 			auto it = std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
@@ -208,31 +213,47 @@ namespace nl {
 			return static_cast<int>(std::distance(container_t::begin(), it));
 		}
 
+		inline int get_index(typename container_t::const_iterator iter)
+		{
+			if (iter == container_t::cend()) return (-1); //
+			return std::distance(container_t::cbegin(), iter);
+		}
+
 
 		inline constexpr size_t get_column_count() const
 		{
 			return column_count;
 		}
 
-		std::string get_as_string(size_t row, size_t column) const noexcept
+		inline std::string get_as_string(size_t row, size_t column) const noexcept
 		{
 			return nl::detail::loop<column_count - 1>::get_as_string(tuple_at(row), column);
 		}
 
 		template<size_t I>
-		bool binary_find(const typename std::tuple_element_t<I, tuple_t>& value, tuple_t& found_row) const
+		inline typename container_t::const_iterator binary_find(const typename std::tuple_element_t<I, tuple_t>& value) const
 		{
 			typedef detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp;
 			auto it = std::lower_bound(container_t::begin(), container_t::end(), value, comp{});
 			if (it != container_t::end() && !comp{}(value, *it)) {
-				found_row = *it;
-				return true;
+				return it;
 			}
-			return false;
+			return container_t::end();
 		}
 
 		template<size_t I>
-		std::vector<relation_t> group_by() const {
+		inline typename container_t::iterator binary_find(const typename std::tuple_element_t<I, tuple_t>& value)
+		{
+			typedef detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp;
+			auto it = std::lower_bound(container_t::begin(), container_t::end(), value, comp{});
+			if (it != container_t::end() && !comp{}(value, *it)) {
+				return it;
+			}
+			return container_t::end();
+		}
+
+		template<size_t I>
+		inline std::vector<relation_t> group_by() const {
 			order_by<I>();
 			std::vector<relation_t> ret_vec;
 			for (auto iter = container_t::begin(); iter != container_t::end();) {
@@ -246,7 +267,7 @@ namespace nl {
 		}
 
 		template<size_t I>
-		auto map_group_by() const noexcept
+		inline auto map_group_by() const noexcept
 		{
 			std::unordered_map<elem_t<I>, relation_t> group_map;
 			for (auto iter = container_t::begin(); iter != container_t::end(); iter++) {
@@ -255,23 +276,12 @@ namespace nl {
 			return std::move(group_map);
 		}
 
-		//still confused of the return type, int or size_t or container::diff_t
-		inline int get_index_row(const row_t& row) const noexcept
-		{
-			auto iter = std::find(container_t::begin(), container_t::end(), row);
-			if (iter != container_t::end())
-			{
-				return std::distance(container_t::begin(), iter);
-			}
-			else return -1;
-		}
-
 		//O(M+n) complexity in time
 		//O(n) complexity in memory
 		//assumes that both col I1 and I2 have unique elements and are both the same type or is 
 
 		template<size_t I1, size_t I2, typename rel_t >
-		auto join_on(const rel_t& rel) const
+		inline auto join_on(const rel_t& rel) const
 		{
 			static_assert(std::is_same_v<typename std::tuple_element_t<I1, tuple_t>, typename std::tuple_element_t<I2, typename rel_t::tuple_t>>
 				|| std::is_convertible_v<elem_t<I1>, typename rel_t::template elem_t<I2>>, "Cannot join on column that are not same type or the types are not convertible");
@@ -293,7 +303,7 @@ namespace nl {
 		//removes all consequtive adjacent dublicates, sort first if you want to remove all dublicate 
 		//O(N) for the whole relation
 		template<size_t I>
-		void unique() {
+		inline void unique() {
 			auto start = container_t::begin();
 			auto result = start;
 			while (++start != container_t::end()) {
@@ -305,18 +315,8 @@ namespace nl {
 			container_t::erase(end, container_t::end());
 		}
 
-		template<size_t...I>
-		auto select() {
-			using T = std::tuple<std::tuple_element_t<I, tuple_t>...>;
-			relation<container<T, alloc_t<T>>> new_relation;
-			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
-			{
-				new_relation.push_back(std::forward_as_tuple(std::get<I>(*iter)...));
-			}
-			return std::move(new_relation);
-		}
 		template<size_t I>
-		auto isolate_column()
+		inline auto isolate_column()
 		{
 			std::vector<elem_t<I>> isolated_column(container_t::size());
 			std::transform(container_t::begin(), container_t::end(), isolated_column.begin(), [&](tuple_t& row) -> elem_t<I> {
@@ -325,12 +325,12 @@ namespace nl {
 			return std::move(isolated_column);
 		}
 
-		void del_back()
+		inline void del_back()
 		{
 			container_t::pop_back();
 		}
 
-		void del_row(size_t row)
+		inline void del_row(size_t row)
 		{
 			assert(row < container_t::size() && "Invalid \'row\' index in del_row");
 			if (row == container_t::size() - 1){
@@ -345,7 +345,7 @@ namespace nl {
 		}
 
 		//need to test this 
-		void del_row_range(size_t from, size_t count)
+		inline void del_row_range(size_t from, size_t count)
 		{
 			assert(((from + count) < container_t::size()) && "Invalid \'from\' in del_row_range");
 			auto it_from = std::next(container_t::begin(), from);
@@ -357,7 +357,16 @@ namespace nl {
 		}
 
 		template<size_t I>
-		auto like(const std::regex&& expresion) const
+		inline size_t del_row_if_value(const elem_t<I>& value)
+		{
+			auto it_end = std::remove_if(container_t::begin(), container_t::end(), [&](const tuple_t& row) {
+				return (value == std::get<I>(row));
+			});
+			container_t::erase(it_end, container_t::end());
+		}
+
+		template<size_t I>
+		inline auto like(const std::regex&& expresion) const
 		{
 			//returns a relation of values found, like only works on string types
 			if constexpr (!std::is_same_v<elem_t<I>, std::string>)
@@ -376,17 +385,26 @@ namespace nl {
 		}
 	
 		template<size_t...I>
-		auto select(std::index_sequence<I...>)
+		inline auto select(std::index_sequence<I...>)
 		{
 			using T = std::tuple<std::tuple_element_t<I, tuple_t>...>;
-			relation<container<T, alloc_t<T>>> new_relation;
-			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
-			{
-				new_relation.push_back(std::forward_as_tuple(std::get<I>(*iter)...));
-			}
+			relation<container<T, alloc_t<T>>> new_relation(container_t::size());
+			std::transform(container_t::begin(), container_t::end(), new_relation.begin(), [&](tuple_t& row_) -> T {
+				return std::make_tuple(std::get<I>(row_)...);
+			});
 			return std::move(new_relation);
 		}
 
+		template<size_t...I>
+		inline auto select()
+		{
+			using T = std::tuple<std::tuple_element_t<I, tuple_t>...>;
+			relation<container<T, alloc_t<T>>> new_relation(container_t::size());
+			std::transform(container_t::begin(), container_t::end(), new_relation.begin(), [&](tuple_t& row_) -> T {
+				return std::make_tuple(std::get<I>(row_)...);
+			});
+			return std::move(new_relation);
+		}
 		
 
 		template<size_t I, typename order_by = order_asc<typename std::tuple_element_t<I, tuple_t>>>
@@ -415,34 +433,34 @@ namespace nl {
 		}
 
 		template<size_t I>
-		typename container_t::const_reference add_in_order(const val&... args)
+		typename container_t::iterator add_in_order(const val&... args)
 		{
 			static_assert(std::tuple_size_v<tuple_t> == sizeof...(args), "Incomplete argument in add_in_order");
 			tuple_t tuple = std::tie(args...);
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto iter = std::lower_bound(container_t::begin(), container_t::end(),std::get<I>(tuple), comp);
 			if (iter != container_t::end()){
-				return *(container_t::insert(iter, std::move(tuple)));
+				return (container_t::insert(iter, std::move(tuple)));
 			}
 			else {
 				//greater than the last element
 				container_t::push_back(std::move(tuple));
-				return container_t::back();
+				return (--container_t::end());
 			}
 		}
 
 		template<size_t I>
-		typename container_t::const_reference add_in_order(const row_t& row)
+		inline typename container_t::iterator add_in_order(const row_t& row)
 		{
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto iter = std::lower_bound(container_t::begin(), container_t::end(), std::get<I>(row), comp);
 			if (iter != container_t::end()) {
-				return *(container_t::insert(iter, row));
+				return (container_t::insert(iter, row));
 			}
 			else {
 				//greater than the last element
 				container_t::push_back(row);
-				return container_t::back();
+				return (--container_t::end());
 			}
 		}
 
@@ -455,22 +473,22 @@ namespace nl {
 			default_row = std::make_tuple(values...);
 		}
 		template<size_t I>
-		typename container_t::const_reference add_default_in_order(){
+		inline typename container_t::iterator add_default_in_order(){
 			detail::comp_tuple_with_value<I, tuple_t, std::tuple_element_t<I, tuple_t>> comp{};
 			auto iter = std::lower_bound(container_t::begin(), container_t::end(), std::get<I>(default_row), comp);
 			if (iter != container_t::end()) {
-				return *(container_t::insert(iter, default_row));
+				return (container_t::insert(iter, default_row));
 			}
 			else {
 				//greater than the last element
 				container_t::push_back(default_row);
-				return container_t::back();
+				return (--container_t::end());
 			}
 		}
 
-		typename container_t::const_reference add_default(){
+		inline typename container_t::iterator add_default(){
 			container_t::push_back(default_row);
-			return container_t::back();
+			return (--container_t::end());
 		}
 
 
@@ -700,17 +718,11 @@ namespace nl {
 		}
 
 		template<size_t col, typename execution_policy = std::execution::parallel_policy >
-		bool find_on_par(const typename std::tuple_element_t<col, tuple_t>& value, tuple_t& found_row, execution_policy policy = std::execution::par) const
+		inline typename container_t::iterator find_on_par(const typename std::tuple_element_t<col, tuple_t>& value, execution_policy policy = std::execution::par) const
 		{
-			auto it = std::find_if(policy, container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
+			return std::find_if(policy, container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
 				return(value == std::get<col>(tuple));
-				});
-			if (it == container_t::end())
-			{
-				return false;
-			}
-			found_row = *it;
-			return true;
+			});
 		}
 		template<size_t I, typename execution_policy = std::execution::parallel_policy>
 		auto map_group_by_par(execution_policy policy = std::execution::par) {
