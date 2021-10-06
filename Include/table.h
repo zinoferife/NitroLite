@@ -17,7 +17,13 @@ namespace nl
 		remove_multiple,
 		update,
 		merge,
-		transform
+		transform,
+		evt,
+		load,
+		reset,
+		sorted,
+		visited,
+		normalised
 	};
 
 	//the idea of tables is to have named realtions
