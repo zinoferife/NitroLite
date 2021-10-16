@@ -45,28 +45,18 @@ namespace nl {
 		template<R(*function)(Args...)>
 		void remove_listener()
 		{
-			std::remove_if(m_listeners.begin(), m_listeners.end(), [&](listener& listen)-> bool {
+			auto it = std::remove_if(m_listeners.begin(), m_listeners.end(), [&](listener& listen)-> bool {
 				return (listen.second == &function_stub<function>);
 				});
+			if(it != m_listeners.end()) m_listeners.erase(it, m_listeners.end());
 		}
 		template<class C, R(C::* mem_func)(Args...)>
 		void remove_listener(C* instance)
 		{
-			std::remove_if(m_listeners.begin(), m_listeners.end(), [&](listener& listen)-> bool {
+			auto it = std::remove_if(m_listeners.begin(), m_listeners.end(), [&](listener& listen)-> bool {
 				return (listen.first == instance && listen.second == &mem_function_stub<C, mem_func>);
 			});
-		}
-
-		void notify(Args&&... arg) const
-		{
-			if (!m_listeners.empty())
-			{
-				for (auto iter = m_listeners.begin(); iter != m_listeners.end(); iter++)
-				{
-					assert(iter->second != nullptr && "Cannot notify an empty listeneer");
-					(*iter).second((*iter).first, std::forward<Args>(arg)...);
-				}
-			}
+			if(it != m_listeners.end()) m_listeners.erase(it, m_listeners.end());
 		}
 
 		void notify(Args&... arg) const

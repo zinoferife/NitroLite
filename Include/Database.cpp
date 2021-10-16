@@ -155,5 +155,6 @@ bool nl::database::exec_once(statement_index index)
 		m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 		return false;
 	}
+	return false;
 }
 

@@ -43,7 +43,7 @@ namespace nl
 	using set_relation = relation<std::set<std::tuple<T...>>>;
 
 	template<size_t offset, typename tuple_t>
-	constexpr size_t j_ = std::tuple_size_v<tuple_t> +offset;
+	constexpr size_t j_ = std::tuple_size_v<tuple_t> + offset;
 
 	using blob_t = std::vector<std::uint8_t>;
 

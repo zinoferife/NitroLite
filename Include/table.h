@@ -4,12 +4,8 @@
 #include <array>
 namespace nl
 {
-	//for _multiples, the row_added is a count of added
-	//it would be very difficult to specify which rows were added since add can happen
-	//at any point in the table not just at the end,
-	//however if add only appened to the end, then (table::end() - row_added) - 1 should give a start of where
-	// the added range started from 
-	enum class notifications
+	
+	enum class notifications : size_t
 	{
 		add,
 		add_multiple,
@@ -23,10 +19,22 @@ namespace nl
 		reset,
 		sorted,
 		visited,
-		normalised
+		normalised,
+		clear,
+		error,
+		max
 	};
 
-	//the idea of tables is to have named realtions
+
+	enum class notif_error_code : size_t
+	{
+		invalid_id,
+		improper_notification_argument,
+		end_of_table_iterator,
+		no_error
+	};
+
+	//the idea of tables is to have named relaltions
 	//realtions by defination are just containers of tuples
 	//the enum names and macro is very clumsy and static
 	//this idea might be good? since the names are editable at run time
@@ -43,12 +51,16 @@ namespace nl
 		struct notification_data
 		{
 			nl::notifications notif;
-			typename relation_t::iterator row_iterator;
+			nl::notif_error_code error;
 			size_t column;
-			size_t count_of_added;
+			union {
+				size_t count;
+				size_t event_type;
+			};
+			typename relation_t::iterator row_iterator;
 		};
 
-		using listener_t = nl::table_listener<void, notifications, const vector_table&, const notification_data&>; //
+		using listener_t = nl::table_listener<void, const vector_table&, const notification_data&>; //
 		vector_table() {}
 		explicit vector_table(size_t size) : vector_relation<args...>{ size } {}
 		virtual ~vector_table() {}
@@ -102,20 +114,35 @@ namespace nl
 			return names;
 		}
 
+		template<nl::notifications notif>
 		inline listener_t& sink()
 		{
-			return listeners;
+			static_assert(notif < nl::notifications::max, "invalid notifications type");
+			return listeners_sinks[(size_t)notif];
 		}
 
-		void notify(notifications notif, const notification_data& data)
+		inline listener_t& sink(nl::notifications notif)
 		{
-			listeners.notify(notif, *this, data);
+			assert(notif < nl::notifications::max && "Invalid notification type");
+			return listeners_sinks[(size_t)notif];
+		}
+
+		template<nl::notifications notif>
+		inline void notify(const notification_data& data)
+		{
+			static_assert(notif < nl::notifications::max, "invalid notifications type");
+			listeners_sinks[(size_t)notif].notify(*this, data);
+		}
+
+		inline void notify(nl::notifications notif, const notification_data& data)
+		{
+			assert(notif < nl::notifications::max && "Invalid notification type");
+			listeners_sinks[(size_t)notif].notify(*this, data);
 		}
 		
 	protected:
 		name_array names;
-		listener_t listeners;
-
+		std::array<listener_t, (size_t)nl::notifications::max> listeners_sinks;
 	};
 
 }

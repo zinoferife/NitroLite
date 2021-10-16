@@ -127,7 +127,7 @@ namespace nl {
 
 		inline typename container_t::iterator add(const row_t& row)
 		{
-			container_t::emplace_back(std::move(row));
+			container_t::emplace_back(row);
 			return (--container_t::end());
 		}
 
@@ -213,12 +213,23 @@ namespace nl {
 			return static_cast<int>(std::distance(container_t::begin(), it));
 		}
 
-		inline int get_index(typename container_t::const_iterator iter)
+		inline int get_index(typename container_t::const_iterator iter) const noexcept
 		{
 			if (iter == container_t::cend()) return (-1); //
 			return std::distance(container_t::cbegin(), iter);
 		}
 
+		inline typename container_t::iterator get_iterator(int index) noexcept
+		{
+			if (index == -1) return container_t::end();
+			return std::next(container_t::begin(), index);
+		}
+
+		inline typename container_t::const_iterator get_iterator(int index) const noexcept
+		{
+			if (index == -1) return container_t::end();
+			return std::next(container_t::begin(), index);
+		}
 
 		inline constexpr size_t get_column_count() const
 		{
@@ -287,14 +298,16 @@ namespace nl {
 				|| std::is_convertible_v<elem_t<I1>, typename rel_t::template elem_t<I2>>, "Cannot join on column that are not same type or the types are not convertible");
 			using type = typename detail::join_tuple_type<tuple_t, typename rel_t::tuple_t>::type;
 			relation<container<type, alloc_t<type>>> new_relation;
-			std::unordered_map<std::tuple_element_t<I2, typename rel_t::tuple_t>, typename rel_t::iterator> find_map;
+			new_relation.reserve(container_t::size());
+
+			std::unordered_map<std::tuple_element_t<I2, typename rel_t::tuple_t>, typename rel_t::const_iterator> find_map;
 			for (auto rel_iter = rel.cbegin(); rel_iter != rel.cend(); rel_iter++) {
 				find_map.insert(std::make_pair(std::get<I2>(*rel_iter), rel_iter));
 			}
 			for (auto this_iter = container_t::cbegin(); this_iter != container_t::cend(); this_iter++) {
 				auto find_iter = find_map.find(std::get<I1>(*this_iter));
 				if (find_iter != find_map.end()) {
-					new_relation.push_back(std::forward<type>(std::tuple_cat(*this_iter, *(find_iter->second))));;
+					new_relation.emplace_back(std::tuple_cat(*this_iter, *(find_iter->second)));;
 				}
 			}
 			return std::move(new_relation);
@@ -344,6 +357,12 @@ namespace nl {
 			}
 		}
 
+		inline void del_row(typename container_t::iterator del_iter)
+		{
+			assert(!container_t::empty() && "Trying to delete from an empty relation");
+			container_t::erase(del_iter);
+		}
+
 		//need to test this 
 		inline void del_row_range(size_t from, size_t count)
 		{
@@ -383,6 +402,24 @@ namespace nl {
 			}
 			return std::move(ret);
 		}
+
+		template<size_t I>
+		inline auto like_index(const std::regex&& expression)
+		{
+			if constexpr (!std::is_same_v<elem_t<I>, std::string>){
+				return std::vector<size_t>{};
+			}
+			std::vector<size_t> ret;
+			ret.reserve(container_t::size());
+			for (size_t i = 0; i < container_t::size(); i++) {
+				if (std::regex_match(std::get<I>(tuple_at(i)), expression)){
+					ret.emplace_back(i);
+				}
+			}
+			ret.shrink_to_fit();
+			return ret;
+		}
+
 	
 		template<size_t...I>
 		inline auto select(std::index_sequence<I...>)
