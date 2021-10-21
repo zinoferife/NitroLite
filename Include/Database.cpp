@@ -88,31 +88,43 @@ void nl::database::remove_statement(nl::database::statement_index index)
 	assert(index < m_statements.size() && "Invalid statement index to remove");
 	auto iter = m_statements.begin();
 	std::advance(iter, index);
+	sqlite3_finalize(*iter);
 	m_statements.erase(iter);
 }
 
-bool nl::database::set_commit_handler(commit_callback callback, void* UserData)
+void nl::database::set_commit_handler(commit_callback callback, void* UserData)
 {
-	return false;
+	sqlite3_commit_hook(m_database_conn, callback, UserData);
 }
 
 bool nl::database::set_trace_handler(trace_callback callback, std::uint32_t mask, void* UserData)
 {
-	return false;
+	return (sqlite3_trace_v2(m_database_conn, mask, callback, UserData) == SQLITE_OK);
 }
 
 bool nl::database::set_busy_handler(busy_callback callback, void* UserData)
 {
-	return false;
+	return (sqlite3_busy_handler(m_database_conn, callback, UserData) != SQLITE_ERROR);
+}
+
+void nl::database::set_rowback_handler(rollback_callback callback, void* UserData)
+{
+	sqlite3_rollback_hook(m_database_conn, callback, UserData);
+}
+
+void nl::database::set_update_handler(update_callback callback, void* UserData)
+{
+	sqlite3_update_hook(m_database_conn, callback, UserData);
 }
 
 bool nl::database::set_auth_handler(auth callback, void* UserData)
 {
-	return false;
+	return (sqlite3_set_authorizer(m_database_conn, callback, UserData) != SQLITE_ERROR);
 }
 
 void nl::database::set_progress_handler(progress_callback callback, void* UserData, int frq)
 {
+	sqlite3_progress_handler(m_database_conn, frq, callback, UserData);
 }
 
 bool nl::database::register_extension(const sql_extension_func_aggregate& ext)
@@ -137,6 +149,12 @@ bool nl::database::connect(const std::string_view& file)
 	}
 	m_error_msg = "DATABASE ALREAY OPENED, CLOSE DATABASE BEFORE CONNECTING TO A DIFFERENT ONE";
 	return false;
+}
+
+void nl::database::cancel()
+{
+	//cancel an operation
+	sqlite3_interrupt(m_database_conn);
 }
 
 bool nl::database::exec_once(statement_index index)

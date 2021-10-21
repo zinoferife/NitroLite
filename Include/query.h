@@ -77,7 +77,7 @@ namespace nl
 			{
 			public:
 				template<typename tuple_t>
-				static void do_policy(std::stringstream& stream)
+				static inline void do_policy(std::stringstream& stream)
 				{
 					using policy_type = typename std::tuple_element_t<count, tuple_t>;
 					loop<count - 1>::template do_policy<tuple_t>(stream);
@@ -90,7 +90,7 @@ namespace nl
 			{
 			public:
 				template<typename tuple_t>
-				static void do_policy(std::stringstream& stream)
+				static inline void do_policy(std::stringstream& stream)
 				{
 					add_policy<std::tuple_element_t<0, tuple_t> >(stream);
 				}
@@ -134,24 +134,30 @@ namespace nl
 		template<typename...T>
 		query& select(const T&...args)
 		{
-			return do_arguements("SELECT ", "{},", "{}", args...);
+			return do_arguements("SELECT ", "{},", "{} ", args...);
 		}
 		template<typename...T>
 		query& from(const T& ... args)
 		{
-			return do_arguements("FROM ", "{},", "{}", args...);
+			return do_arguements("FROM ", "{},", "{} ", args...);
 		}
 
 		template<typename...T>
 		query& set(const T&...args)
 		{
-			return do_arguements("SET "s, "{} = :{},", "{}=:{}", args...);
+			/*if constexpr (sizeof ...(T) == 1)
+			{
+				using set_t = std::tuple_element_t<0,std::tuple<T...>>;
+				const set_t& value = std::get<0>(std::tuple<const T& ...>{args...});
+				return do_arguements("SET "s, "{} = :{},", "{}=:{} ", value, value);
+			}*/
+			return do_arguements("SET "s, "{} = :{},", "{}=:{} ", args...);
 		}
 
 		template<typename...T>
 		query& values(T...args)
 		{
-			return do_arguements("VALUES (", ":{},", ":{})", args...);
+			return do_arguements("VALUES (", ":{},", ":{}) ", args...);
 		}
 
 		template<typename def_t>
@@ -193,7 +199,7 @@ namespace nl
 			}
 			if constexpr (std::is_same_v<T, std::string>)
 			{
-				mQuery << fmt::format(" {} TEXT ", name);
+				mQuery << fmt::format("{} TEXT ", name);
 				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);
 			}
 			else if constexpr (std::is_integral_v<T>)
@@ -269,7 +275,7 @@ namespace nl
 				const std::string& format, 
 				const S& start)
 		{
-			mQuery << fmt::format("{} {}", func, fmt::format(format, start));
+			mQuery << fmt::format("{} {}", func, fmt::format(format, start, start));
 			return (*this);
 		}
 		

@@ -23,7 +23,7 @@
 #define END_COL_NAME() "null"};
 #define IMPLEMENT_GET_COL_NAME() \
 		template<size_t i> \
-		constexpr const char* get_col_name() { \
+		static constexpr const char* get_col_name() { \
 		static_assert(i >= 0 && i < sizeof(col_names), "invalid index in get_col_name()"); return col_names[i]; }
 #define DEFINE_UNIQUE_ID() enum {unique_id = 0 };
 
@@ -182,6 +182,11 @@ namespace nl {
 			return std::make_tuple(std::get<I>(tuple_at(row))...);
 		}
 
+		template<size_t... I>
+		inline std::tuple<std::tuple_element_t<I, tuple_t>...>  get(typename container_t::const_iterator row) const
+		{
+			return std::make_tuple(std::get<I>(*row)...);
+		}
 		template<size_t col>
 		inline typename container_t::const_iterator find_on(const typename std::tuple_element_t<col, tuple_t>& value) const noexcept
 		{
@@ -311,6 +316,22 @@ namespace nl {
 				}
 			}
 			return std::move(new_relation);
+		}
+
+		template<size_t I, typename Predicate>
+		inline bool any_of(Predicate p)
+		{
+			return std::any_of(container_t::begin(), container_t::end(), [&](row_t& row) {
+				return p(nl::row_value<I>(row));
+			});
+		}
+
+		template<size_t I, typename Predicate>
+		inline bool nono_of(Predicate p)
+		{
+			return std::none_of(container_t::begin(), container_t::end(), [&](row_t& row) {
+				return p(nl::row_value(row));
+			});
 		}
 
 		//removes all consequtive adjacent dublicates, sort first if you want to remove all dublicate 
@@ -593,11 +614,27 @@ namespace nl {
 		auto where(Pred pred) const
 		{
 			relation_t ret_rel;
+			ret_rel.reserve(container_t::size());
 			std::copy_if(container_t::begin(), container_t::end(), std::back_inserter<relation_t>(ret_rel), [&](const tuple_t& value) {
 				return pred(std::get<I>(value));
 				});
 		
+			ret_rel.shrink_to_fit();
 			return std::move(ret_rel);
+		}
+
+		template<size_t I, typename Predicate>
+		std::vector<size_t> where_index(Predicate p)
+		{
+			std::vector<size_t> ret;
+			ret.reserve(container_t::size());
+			for (size_t i = 0; i < container_t::size(); i++) {
+				if (p(nl::row_value<I>(tuple_at(i)))){
+					ret.emplace_back(i);
+				}
+			}
+			ret.shrink_to_fit();
+			return ret;
 		}
 
 		//applies that function to every value in the column I
@@ -775,6 +812,10 @@ namespace nl {
 	protected:
 		static row_t default_row;
 		inline const tuple_t& tuple_at(size_t row) const{
+			return *(std::next(container_t::begin(), row));
+		}
+
+		inline tuple_t& tuple_at(size_t row) {
 			return *(std::next(container_t::begin(), row));
 		}
 

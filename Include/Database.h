@@ -24,6 +24,42 @@ namespace nl
 		class loop;
 	};
 
+	//database events
+	
+	enum database_evt
+	{
+		D_INSERT = SQLITE_INSERT,
+		D_UPDATE = SQLITE_UPDATE,
+		D_DEL = SQLITE_DELETE,
+		D_CREATE_INDEX = SQLITE_CREATE_INDEX,
+		D_CREATE_TABLE = SQLITE_CREATE_TABLE,
+		D_CREATE_VIEW = SQLITE_CREATE_VIEW,
+		D_CREATE_TRIGGER = SQLITE_CREATE_TRIGGER,
+		D_CREATE_TEMP_INDEX = SQLITE_CREATE_TEMP_INDEX,
+		D_CREATE_TEMP_TABLE = SQLITE_CREATE_TEMP_TABLE,
+		D_CREATE_TEMP_TRIGGER = SQLITE_CREATE_TEMP_TRIGGER,
+		D_CREATE_TEMP_VIEW = SQLITE_CREATE_TEMP_VIEW,
+		D_DROP_INDEX = SQLITE_DROP_INDEX,
+		D_DROP_TABLE = SQLITE_DROP_TABLE,
+		D_DROP_VIEW = SQLITE_DROP_VIEW,
+		D_DROP_TRIGGER = SQLITE_DROP_TRIGGER,
+		D_DROP_TEMP_INDEX = SQLITE_DROP_INDEX,
+		D_DROP_TEMP_TABLE = SQLITE_DROP_TEMP_TABLE,
+		D_DROP_TEMP_VIEW = SQLITE_DROP_TEMP_VIEW,
+		D_DROP_TEMP_TRIGGER = SQLITE_DROP_TEMP_TRIGGER,
+		D_PRAGMA = SQLITE_PRAGMA,
+		D_READ = SQLITE_READ,
+		D_SELECT = SQLITE_SELECT,
+		D_TRANSACTION = SQLITE_TRANSACTION,
+		D_ATTACH = SQLITE_ATTACH,
+		D_DETACH = SQLITE_DETACH,
+		D_IGNORE = SQLITE_IGNORE,
+		D_SCHEMA = SQLITE_SCHEMA,
+		D_OK = SQLITE_OK,
+		D_ERROR = SQLITE_ERROR
+	};
+
+
 	struct sql_extension_func_aggregate
 	{
 		typedef void (*FFunction)(sqlite3_context*, int, sqlite3_value**);
@@ -49,7 +85,8 @@ namespace nl
 		typedef statements::size_type statement_index;
 		typedef int(*exeu_callback)(void* arg, int col, char** rol_val, char** col_names);
 		typedef int(*commit_callback)(void* arg);
-		typedef int(*rollback_callback)(void* arg);
+		typedef void(*rollback_callback)(void* arg);
+		typedef void(*update_callback)(void* arg, int evt, char const* database_name, char const* table_name, sqlite_int64 rowid);
 		typedef int(*trace_callback)(std::uint32_t traceType, void* UserData, void* statement, void* traceData);
 		typedef int(*busy_callback)(void* arg, int i);
 		typedef int(*progress_callback)(void* arg);
@@ -66,11 +103,13 @@ namespace nl
 
 
 	public:
+
 		enum
 		{
 			BADSTMT = size_t(-1)
 		};
 
+		
 		database();
 		explicit database(const std::string_view& database_file);
 		database(const database&& connection) noexcept;
@@ -86,11 +125,14 @@ namespace nl
 		void remove_statement(nl::database::statement_index index);
 		bool is_open() const { return (m_database_conn != nullptr); }
 		bool connect(const std::string_view& file);
+		void cancel();
 		
 	public:
-		bool set_commit_handler(commit_callback callback, void* UserData);
+		void set_commit_handler(commit_callback callback, void* UserData);
 		bool set_trace_handler(trace_callback callback, std::uint32_t mask, void* UserData);
 		bool set_busy_handler(busy_callback callback, void* UserData);
+		void set_rowback_handler(rollback_callback callback, void* UserData);
+		void set_update_handler(update_callback callback, void* UserData);
 		bool set_auth_handler(auth callback, void* UserData);
 		void set_progress_handler(progress_callback callback, void* UserData, int frq);
 		bool register_extension(const sql_extension_func_aggregate& ext);
@@ -109,29 +151,41 @@ namespace nl
 			return do_query_insert(index, rel);
 		}
 
-		template<typename relation>
-		bool insert(statement_index index, const typename relation::row_t& row)
+		template<typename relation, typename row_t>
+		std::enable_if_t<nl::detail::is_relation_row_v<row_t, relation>, bool> 
+			insert(statement_index index, const row_t& row)
 		{
 			return do_query_insert_row(index, row);
 		}
 
 		template<typename relation, typename...T>
-		bool insert(statement_index index, const relation& rel ,T... args)
+		std::enable_if_t<nl::detail::is_relation_v<relation>, bool> 
+			insert(statement_index index, const relation& rel ,T... args)
 		{
 			return do_query_insert_para(index, rel, args...);
 		}
 
-		template<typename relation, typename... T>
-		bool insert(statement_index index, const typename relation::row_t& row, T... args)
+		template<typename relation, typename row_t, typename... T>
+		std::enable_if_t<nl::detail::is_relation_row_v<row_t, relation>, bool>
+			insert(statement_index index, const row_t& row, T... args)
 		{
 			return do_query_insert_para_row(index, row, args...);
 		}
 
-
 		bool exec_once(statement_index index);
 		
-		template<typename relation_t, typename...T>
-		bool upate(statement_index index, typename relation_t::tuple_t& row, T... args)
+		template<typename... Args>
+		bool bind(statement_index index, Args&&... args)
+		{
+			assert(index < m_statements.size() && "Invaid statement index");
+			auto statement = m_statements[index];
+			constexpr size_t size = sizeof...(args);
+			return nl::detail::loop<size - 1>::template do_bind(statement, std::forward_as_tuple<Args...>(args...));
+		}
+
+
+		template<typename row_t, typename...T>
+		bool update(statement_index index, typename row_t& row, T... args)
 		{
 			return do_update_para(index, row, args...);
 		}
@@ -188,7 +242,7 @@ namespace nl
 		template<typename relation>
 		bool do_query_insert(statement_index index, const relation& rel)
 		{
-			static_assert(nl::detail::has_base_relation<relation>::value, "relation is not a valid relation type");
+			static_assert(nl::detail::is_relation_v<relation>, "relation is not a valid relation type");
 			assert(index < m_statements.size() && "Invalid statement index");
 			statements::reference statement = m_statements[index];
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
@@ -201,10 +255,11 @@ namespace nl
 						return false;
 					}
 					if (sqlite3_step(statement) == SQLITE_DONE) {
-							if(sqlite3_reset(statement) == SQLITE_SCHEMA) {
+							if(sqlite3_reset(statement) != SQLITE_OK) {
 								m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 								return false;
 							}
+							sqlite3_clear_bindings(statement);
 					}
 					else{
 						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
@@ -221,12 +276,12 @@ namespace nl
 			return false;
 		}
 
-		template<typename relation, std::enable_if_t<nl::detail::has_base_relation<relation>::value,int> = 0>
-		bool do_query_insert_row(statement_index index, const typename relation::row_t & row)
+		template<typename row_t>
+		bool do_query_insert_row(statement_index index, const row_t & row)
 		{
 			assert(index < m_statements.size() && "Invalid statement index");
 			statements::reference statement = m_statements[index];
-			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> -1;
+			constexpr size_t size = std::tuple_size_v<row_t> -1;
 			if (sqlite3_step(m_statements[begin_immediate]) == SQLITE_DONE)
 			{
 				if (!nl::detail::loop<size>::do_bind(statement, row))
@@ -235,10 +290,11 @@ namespace nl
 					return false;
 				}
 				if (sqlite3_step(statement) == SQLITE_DONE) {
-					if (sqlite3_reset(statement) == SQLITE_SCHEMA) {
+					if (sqlite3_reset(statement) != SQLITE_OK) {
 						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 						return false;
 					}
+					sqlite3_clear_bindings(statement);
 				}
 				else {
 					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
@@ -263,7 +319,7 @@ namespace nl
 		template<typename relation, typename S,  typename... T>
 		bool do_query_insert_para(statement_index index, const relation& rel,const S& start , const T&...args)
 		{
-			static_assert(nl::detail::has_base_relation<relation>::value, "relation is not a valid relation type");
+			static_assert(nl::detail::is_relation_v<relation>, "relation is not a valid relation type");
 			assert(index < m_statements.size() && "Invalid statement index");
 			const std::array<const S, sizeof...(T) + 1> parameters{start, args...};
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
@@ -279,11 +335,12 @@ namespace nl
 					}
 					//execute the insert statement
 					if (sqlite3_step(statement) == SQLITE_DONE){
-						if (sqlite3_reset(statement) == SQLITE_SCHEMA)
+						if (sqlite3_reset(statement) != SQLITE_OK)
 						{
 							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 							return false;
 						}
+						sqlite3_clear_bindings(statement);
 					}else{
 						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 						return false;
@@ -305,13 +362,12 @@ namespace nl
 			return true;
 		}
 
-		template<typename relation_t, typename S, typename... T>
-		bool do_query_insert_para_row(statement_index index, const typename relation_t::row_t& row, const S& start, const T& ...args)
+		template<typename row_t, typename S, typename... T>
+		bool do_query_insert_para_row(statement_index index, const row_t& row, const S& start, const T& ...args)
 		{
-			static_assert(nl::detail::has_base_relation<relation_t>::value, "relation is not a valid relation type");
 			assert(index < m_statements.size() && "Invalid statement index");
 			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
-			constexpr size_t size = std::tuple_size_v<typename relation_t::tuple_t> -1;
+			constexpr size_t size = std::tuple_size_v<row_t> - 1;
 			statements::reference statement = m_statements[index];
 
 			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
@@ -322,11 +378,12 @@ namespace nl
 					}
 					//execute the insert statement
 					if (sqlite3_step(statement) == SQLITE_DONE) {
-						if (sqlite3_reset(statement) == SQLITE_SCHEMA)
+						if (sqlite3_reset(statement) != SQLITE_OK)
 						{
 							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 							return false;
 						}
+						sqlite3_clear_bindings(statement);
 					}
 					else {
 						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
@@ -346,13 +403,12 @@ namespace nl
 			return false;
 		}
 
-		template<typename relation_t, typename S, typename... T>
-		bool do_update_para(statement_index index, typename relation_t::tuple_t& row, const S& start, const T&... args)
+		template<typename row_t, typename S, typename... T>
+		bool do_update_para(statement_index index, const row_t& row, const S& start, const T&... args)
 		{
-			static_assert(nl::detail::has_base_relation<relation_t>::value, "relation is not a valid relation type");
 			assert(index < m_statements.size() && "Invalid statement index");
 			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
-			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> -1;
+			constexpr size_t size = std::tuple_size_v<row_t> -1;
 			statements::reference statement = m_statements[index];
 			
 			if (nl::detail::loop<size>::template do_bind_para(statement, row, parameters))
@@ -361,11 +417,12 @@ namespace nl
 				{
 					if (sqlite3_step(statement) == SQLITE_DONE)
 					{
-						if (sqlite3_reset(statement) == SQLITE_SCHEMA)
+						if (sqlite3_reset(statement) != SQLITE_OK)
 						{
 							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 							return false;
 						}
+						sqlite3_clear_bindings(statement);
 					}
 					else {
 						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));

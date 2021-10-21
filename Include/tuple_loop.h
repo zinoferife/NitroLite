@@ -121,6 +121,7 @@ namespace nl
 			{
 				const std::string p_name = fmt::format(":{}", array[col_id]);
 				position = sqlite3_bind_parameter_index(statement, p_name.c_str());
+				if (position == 0) return false;
 			}
 			else if constexpr (std::is_same_v<array_value_type, size_t> || std::is_convertible_v<array_value_type, size_t>)
 			{
@@ -626,10 +627,19 @@ namespace nl
 		//figure out a better way to do this.. lol i relaised that this is way better, this "is_convertible_v" was not here before
 		//i just learnt it, but i am so proud of the other ones i wrote up with andrei's loki libary implementation that i dont want to remove it
 		template <typename T> class _is_relation { public:enum { value = std::is_convertible_v<T, base_relation> }; };
+		template<typename T, typename relation>
+		class _is_relation_row { 
+		public: 
+			enum { value = std::conjunction_v<_is_relation<relation>, std::is_same<T, typename relation::row_t>> };
+		};
+
+
 		template<typename T>
 		using is_relation = _is_relation<std::decay_t<T>>;
 		template<typename T>
 		constexpr bool is_relation_v = is_relation<T>::value;
+		template<typename T, typename relation>
+		constexpr bool is_relation_row_v = _is_relation_row<T, relation>::value;
 
 
 		//redundant?? yes but i am keeping it

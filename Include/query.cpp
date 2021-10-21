@@ -20,7 +20,7 @@ query& query::del(const std::string_view& table)
 
 query& query::where(const std::string_view& condition)
 {
-	mQuery << fmt::format("WHERE {}", condition);
+	mQuery << fmt::format("WHERE {} ", condition);
 	return (*this);
 }
 
