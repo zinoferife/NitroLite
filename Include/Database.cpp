@@ -1,6 +1,8 @@
 #include "../pch.h"
 #include "Database.h"
 std::int32_t nl::sql_extension_func_aggregate::sTextEncoding = SQLITE_UTF8;
+size_t nl::database::index_counter = 0;
+
 
 nl::database::database()
 :m_database_conn(nullptr){
@@ -53,7 +55,7 @@ nl::database::~database()
 {
 	if (!m_statements.empty()) {
 		for (auto& stmt : m_statements){
-			sqlite3_finalize(stmt);
+			sqlite3_finalize((stmt.second));
 		}
 	}
 	if (m_database_conn){
@@ -68,12 +70,19 @@ nl::database::statement_index nl::database::prepare_query(const std::string& que
 		m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 		return BADSTMT;
 	}
-	m_statements.emplace_back(nullptr);
+	statement_type statement;
 	const char* tail = nullptr;
-	if ((sqlite3_prepare(m_database_conn, query.data(), query.size(), &m_statements.back(), &tail)) == SQLITE_OK){
-		return statements::size_type(m_statements.size() - 1);
+	if ((sqlite3_prepare(m_database_conn, query.data(), query.size(), &statement, &tail)) == SQLITE_OK){
+		size_t index = index_counter++; //forever increasing index_counter
+		auto [iter, inserted] = m_statements.insert({ index, statement });
+		if (inserted){
+			return iter->first;
+		}
+		else{
+			m_error_msg = "Could not create query statement, query handle already exist";
+			return BADSTMT;
+		}
 	}
-	m_statements.pop_back();
 	m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
 	return BADSTMT;
 }
@@ -85,11 +94,11 @@ nl::database::statement_index nl::database::prepare_query(const nl::query& query
 
 void nl::database::remove_statement(nl::database::statement_index index)
 {
-	assert(index < m_statements.size() && "Invalid statement index to remove");
-	auto iter = m_statements.begin();
-	std::advance(iter, index);
-	sqlite3_finalize(*iter);
-	m_statements.erase(iter);
+	auto iter = m_statements.find(index);
+	if (iter != m_statements.end()) {
+		sqlite3_finalize(iter->second);
+		m_statements.erase(iter);
+	}
 }
 
 void nl::database::set_commit_handler(commit_callback callback, void* UserData)
@@ -159,8 +168,12 @@ void nl::database::cancel()
 
 bool nl::database::exec_once(statement_index index)
 {
-	assert(index < m_statements.size() && "Invalid statement index");
-	statements::reference statement = m_statements[index];
+	auto iter = m_statements.find(index);
+	if (iter == m_statements.end()) {
+		m_error_msg = "Invalid statement index";
+		return false;
+	}
+	auto [index_, statement] = *iter;
 	if (statement)
 	{
 		if (sqlite3_step(statement) == SQLITE_DONE){

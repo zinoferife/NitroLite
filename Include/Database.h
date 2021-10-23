@@ -4,6 +4,8 @@
 #include <utility>
 #include <cassert>
 #include <SQLite/sqlite3.h>
+#include <unordered_map>
+
 
 #include "relation.h"
 #include "query.h"
@@ -81,8 +83,9 @@ namespace nl
 	{
 	//callbacks for sqlite
 	public:
-		typedef std::vector<sqlite3_stmt*> statements;
+		typedef std::unordered_map<size_t,sqlite3_stmt*> statements;
 		typedef statements::size_type statement_index;
+		typedef statements::value_type::second_type statement_type;
 		typedef int(*exeu_callback)(void* arg, int col, char** rol_val, char** col_names);
 		typedef int(*commit_callback)(void* arg);
 		typedef void(*rollback_callback)(void* arg);
@@ -104,6 +107,7 @@ namespace nl
 
 	public:
 
+		static size_t index_counter;
 		enum
 		{
 			BADSTMT = size_t(-1)
@@ -192,14 +196,19 @@ namespace nl
 
 
 
-	//template functions
+	//template functions to do the dirty work
 	private:
 		template<typename relation>
 		relation do_query_retrive(statement_index index)
 		{
-			assert(index < m_statements.size() && "Invalid statement index");
-			static_assert(nl::detail::has_base_relation<relation>::value, "relation is not a valid relation type");
-			statements::reference statement = m_statements[index];
+			static_assert(nl::detail::is_relation_v<relation>, "relation is not a valid relation type");
+
+			auto iter = m_statements.find(index);
+			if (iter == m_statements.end()){
+				m_error_msg = "Invalid statement index";
+				return relation{};
+			}
+			auto [idx, statement] = *iter;
 			if (sqlite3_step(m_statements[stmt::begin]) == SQLITE_DONE)
 			{
 				if (statement)
@@ -243,10 +252,13 @@ namespace nl
 		bool do_query_insert(statement_index index, const relation& rel)
 		{
 			static_assert(nl::detail::is_relation_v<relation>, "relation is not a valid relation type");
-			assert(index < m_statements.size() && "Invalid statement index");
-			statements::reference statement = m_statements[index];
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
-			
+			auto  iter = m_statements.find(index);
+			if (iter == m_statements.end()){
+				m_error_msg = "Invalud statement index";
+				return false;
+			}
+			auto [idx, statement] = *iter;
 			//loop::do_insert should actually be called do_bind, it binds values to insert statements 
 			if (sqlite3_step(m_statements[begin_immediate]) == SQLITE_DONE){
 				for (auto& tuple : rel) {
@@ -279,9 +291,14 @@ namespace nl
 		template<typename row_t>
 		bool do_query_insert_row(statement_index index, const row_t & row)
 		{
-			assert(index < m_statements.size() && "Invalid statement index");
-			statements::reference statement = m_statements[index];
 			constexpr size_t size = std::tuple_size_v<row_t> -1;
+			auto iter = m_statements.find(index);
+			if (iter == m_statements.end()){
+				m_error_msg = "Invalid statement index";
+				return false;
+			}
+			auto [idx, statement] = *iter;
+
 			if (sqlite3_step(m_statements[begin_immediate]) == SQLITE_DONE)
 			{
 				if (!nl::detail::loop<size>::do_bind(statement, row))
@@ -323,8 +340,12 @@ namespace nl
 			assert(index < m_statements.size() && "Invalid statement index");
 			const std::array<const S, sizeof...(T) + 1> parameters{start, args...};
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
-			statements::reference statement = m_statements[index];
-
+			auto iter = m_statements.find(index);
+			if (iter == m_statements.end()){
+				m_error_msg = "Invalid statement index";
+				return false;
+			}
+			auto [idx, statement] = *iter;
 			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
 			{
 				for (auto& tuple : rel){
@@ -367,9 +388,13 @@ namespace nl
 		{
 			assert(index < m_statements.size() && "Invalid statement index");
 			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
-			constexpr size_t size = std::tuple_size_v<row_t> - 1;
-			statements::reference statement = m_statements[index];
-
+			constexpr size_t size = std::tuple_size_v<row_t> -1;
+			auto iter = m_statements.find(index);
+			if (iter == m_statements.end()){
+				m_error_msg = "Invalid statement index";
+				return false;
+			}
+			auto [idx, statement] = *iter;
 			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
 			{
 					if (!nl::detail::loop<size>::do_bind_para(statement, row, parameters)) {
@@ -406,10 +431,16 @@ namespace nl
 		template<typename row_t, typename S, typename... T>
 		bool do_update_para(statement_index index, const row_t& row, const S& start, const T&... args)
 		{
-			assert(index < m_statements.size() && "Invalid statement index");
 			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
 			constexpr size_t size = std::tuple_size_v<row_t> -1;
-			statements::reference statement = m_statements[index];
+
+			auto iter = m_statements.find(index);
+			if (iter == m_statements.end())
+			{
+				m_error_msg = "Invalid statement index";
+				return false;
+			}
+			auto [idx, statement] = *iter;
 			
 			if (nl::detail::loop<size>::template do_bind_para(statement, row, parameters))
 			{
@@ -449,7 +480,7 @@ namespace nl
 	
 	private:
 		//cannot copy or assign a database connection, every created on is a new connection, 
-		//a database connection is a resource that is usually only one in a thread
+		//a database connection is a resource that is usually only one in a process
 		database(const database&) = delete;
 		database& operator=(const database&) = delete;
 		
