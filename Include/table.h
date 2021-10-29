@@ -58,6 +58,7 @@ namespace nl
 				size_t event_type;
 			};
 			typename relation_t::iterator row_iterator;
+			typename relation_t::variant_t column_value;
 		};
 
 		using listener_t = nl::table_listener<void, const vector_table&, const notification_data&>; //

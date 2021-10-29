@@ -359,6 +359,18 @@ namespace nl {
 			return std::move(isolated_column);
 		}
 
+		template<size_t I>
+		inline std::vector<std::reference_wrapper<elem_t<I>>> isolate_column_as_ref()
+		{
+			std::vector<std::reference_wrapper<elem_t<I>>> isolated_column;
+			isolated_column.reserve(container_t::size());
+			for (auto& item : *this)
+			{
+				isolated_column.emplace_back(std::get<I>(item));
+			}
+			return std::move(isolated_column);
+		}
+
 		inline void del_back()
 		{
 			container_t::pop_back();

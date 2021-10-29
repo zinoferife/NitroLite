@@ -72,7 +72,7 @@ nl::database::statement_index nl::database::prepare_query(const std::string& que
 	}
 	statement_type statement;
 	const char* tail = nullptr;
-	if ((sqlite3_prepare(m_database_conn, query.data(), query.size(), &statement, &tail)) == SQLITE_OK){
+	if ((sqlite3_prepare_v2(m_database_conn, query.data(), query.size(), &statement, &tail)) == SQLITE_OK){
 		size_t index = index_counter++; //forever increasing index_counter
 		auto [iter, inserted] = m_statements.insert({ index, statement });
 		if (inserted){
@@ -80,6 +80,7 @@ nl::database::statement_index nl::database::prepare_query(const std::string& que
 		}
 		else{
 			m_error_msg = "Could not create query statement, query handle already exist";
+			sqlite3_finalize(statement);
 			return BADSTMT;
 		}
 	}

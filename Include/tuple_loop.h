@@ -153,6 +153,7 @@ namespace nl
 				{
 					return (SQLITE_OK == sqlite3_bind_text(statement, position, value.c_str(), value.size(), SQLITE_TRANSIENT));
 				}
+				return (SQLITE_OK == sqlite3_bind_null(statement, position));
 			}
 			else if constexpr (std::is_same_v<arg_type, blob_t>)
 			{
@@ -636,10 +637,14 @@ namespace nl
 
 		template<typename T>
 		using is_relation = _is_relation<std::decay_t<T>>;
+
+		template<typename T, typename rel>
+		using is_relation_row = _is_relation_row<std::decay_t<T>, std::decay_t<rel>>;
+
 		template<typename T>
 		constexpr bool is_relation_v = is_relation<T>::value;
 		template<typename T, typename relation>
-		constexpr bool is_relation_row_v = _is_relation_row<T, relation>::value;
+		constexpr bool is_relation_row_v = is_relation_row<T, relation>::value;
 
 
 		//redundant?? yes but i am keeping it
