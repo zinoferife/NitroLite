@@ -165,10 +165,7 @@ namespace nl
 		{
 			static_assert(nl::detail::is_database_type<def_t>::value, "Default type is not a database type");
 			static_assert(fmt::is_formattable<def_t>::value, "Default type is not an formatable type");
-			if constexpr (std::is_floating_point_v<def_t>) mQuery << fmt::format("DEFAULT {:.4f} ", def);
-			else {
-				mQuery << fmt::format("DEFAULT {} ", def);
-			}
+			mQuery << fmt::format("DEFAULT \'{}\' ", fmt::to_string(def));
 			return (*this);
 		}
 
@@ -214,6 +211,12 @@ namespace nl
 
 			}
 			else if constexpr (std::is_same_v < T, nl::blob_t>)
+			{
+				mQuery << fmt::format("{} BLOB ", name);
+				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);
+
+			}
+			else if constexpr (std::is_same_v < T, nl::uuid>)
 			{
 				mQuery << fmt::format("{} BLOB ", name);
 				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);

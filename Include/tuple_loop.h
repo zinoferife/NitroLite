@@ -176,8 +176,8 @@ namespace nl
 			}
 			else if constexpr (std::is_same_v<arg_type, uuid>)
 			{
-				auto blob = std::get<col_id>(tuple).to_blob();
-				return (SQLITE_OK == sqlite3_bind_blob(statement, position, blob.data(), blob.size(), SQLITE_TRANSIENT));
+				auto uuid = std::get<col_id>(tuple);
+				return (SQLITE_OK == sqlite3_bind_blob(statement, position, &uuid, uuid.size(), SQLITE_TRANSIENT));
 			}
 			else
 			{
