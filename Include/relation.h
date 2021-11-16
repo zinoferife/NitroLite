@@ -366,7 +366,7 @@ namespace nl {
 			isolated_column.reserve(container_t::size());
 			for (auto& item : *this)
 			{
-				isolated_column.emplace_back(std::get<I>(item));
+				isolated_column.emplace_back(std::ref(std::get<I>(item)));
 			}
 			return std::move(isolated_column);
 		}

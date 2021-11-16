@@ -12,12 +12,12 @@ namespace nl
 {
 
 	template<size_t I, typename row_t>
-	inline const auto& row_value(const row_t& tuple)
+	constexpr inline const auto& row_value(const row_t& tuple) noexcept
 	{
 		return std::get<I>(tuple);
 	}
 	template<size_t I, typename row_t>
-	inline auto& row_value(row_t& tuple)
+	constexpr inline auto& row_value(row_t& tuple) noexcept
 	{
 		return std::get<I>(tuple);
 	}
@@ -214,7 +214,7 @@ namespace nl
 			}
 			else if constexpr (std::is_same_v<arg_t, blob_t>)
 			{
-				blob_t::value_type* val_ptr = static_cast<blob_t::value_type*>(sqlite3_column_blob(statement, col));
+				const blob_t::value_type* val_ptr = static_cast<const blob_t::value_type*>(sqlite3_column_blob(statement, col));
 				if (val_ptr)
 				{
 					const size_t size = sqlite3_column_bytes(statement, col);
@@ -242,7 +242,7 @@ namespace nl
 			}
 			else if constexpr (std::is_same_v<arg_t, uuid>)
 			{
-				blob_t::value_type* val_ptr = static_cast<blob_t::value_type*>(sqlite3_column_blob(statement, col));
+				const blob_t::value_type* val_ptr = static_cast<const blob_t::value_type*>(sqlite3_column_blob(statement, col));
 				if (val_ptr)
 				{
 					const size_t size = sqlite3_column_bytes(statement, col);

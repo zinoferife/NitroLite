@@ -131,6 +131,11 @@ namespace nl
 
 		inline query& clear() { mQuery.str(std::string()); return (*this); }
 
+		inline query& as() { mQuery << "AS "; }
+
+		inline query& beg_sub_query() { mQuery << "( "; };
+		inline query& end_sub_query() { mQuery << " ) "; };
+
 		template<typename...T>
 		query& select(const T&...args)
 		{

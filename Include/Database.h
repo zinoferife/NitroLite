@@ -200,18 +200,19 @@ namespace nl
 
 		template<typename... Args, typename... Para>
 		bool bind_para(statement_index index, std::tuple<Args...>&& data, const Para& ... paras) {
-			using para_t = std::tuple<Para...>;
-			using first_t = std::decay_t<std::tuple_element_t<0, para_t>>;
+			using para_t = std::tuple<const Para...>;
+			using first_t = std::tuple_element_t<0, para_t>;
 			static_assert(std::is_convertible_v<first_t, std::string> || std::is_integral_v<first_t>, "Parameters must be either an interger or a string");
-			static_assert(std::conjunction_v<std::is_same<first_t, Para>...>, "All parameters must be the same type");
+			static_assert(std::conjunction_v<std::is_convertible<Para, 
+				std::conditional_t<std::is_integral_v<first_t>, first_t, std::string>>...>, "All parameters must be the same type");
 			constexpr const size_t size = sizeof...(Args) - 1;
 
-			std::array<first_t, sizeof...(Para)> parameters{ paras... };
+			const std::array<std::conditional_t<std::is_integral_v<first_t>, first_t, std::string> , sizeof...(Para)> parameters{ paras... };
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()) {
 				m_error_msg = "Invalid statement index";
 				return false;
-			}
+			} 
 			auto [idx, statement] = *iter;
 			return nl::detail::loop<size>::do_bind_para(statement, data, parameters);
 		}
