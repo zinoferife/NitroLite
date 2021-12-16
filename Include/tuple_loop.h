@@ -399,6 +399,23 @@ namespace nl
 				return loop<count - 1>::put_value_in(tuple, value, column);
 			}
 
+			template<typename tuple_t, typename variant_t>
+			static void set_from_variant(tuple_t& tuple, const variant_t& variant, size_t column) 
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in set_from_varient");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
+				using arg_type = std::decay_t<std::tuple_element_t<col, tuple_t>>;
+				if (col == column){
+					//if the type is what the variants is holding 
+					if (std::holds_alternative<arg_type>(variant)) {
+						nl::row_value<col>(tuple) = std::get<arg_type>(variant);
+						return;
+					}
+				}
+				return loop<count - 1>::set_from_variant(tuple, variant, column);
+			}
+
+
 			//true assending, false desending
 			template<typename relation_t, bool order = true>
 			static void quick_sort_column(relation_t & relation, size_t column)
@@ -537,6 +554,22 @@ namespace nl
 					}
 				}
 			}
+
+			template<typename tuple_t, typename variant_t>
+			static void set_from_variant(tuple_t& tuple, const variant_t& variant, size_t column)
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in set_from_varient");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> - 1);
+				using arg_type = std::decay_t<std::tuple_element_t<col, tuple_t>>;
+				if (col == column) {
+					//if the type is what the variants is holding 
+					if (std::holds_alternative<arg_type>(variant)) {
+						nl::row_value<col>(tuple) = std::get<arg_type>(variant);
+						return;
+					}
+				}
+			}
+
 
 			template<typename relation_t, bool order = true>
 			static void quick_sort_column(relation_t& relation, size_t column)

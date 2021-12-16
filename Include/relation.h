@@ -166,6 +166,10 @@ namespace nl {
 			nl::detail::loop<column_count - 1>::get_in(tuple_at(row), variant, col);
 		}
 
+		inline void set_from_variant(size_t row, size_t col, const variant_t& variant) 
+		{
+			nl::detail::loop<column_count - 1>::set_from_variant(tuple_at(row), variant, col);
+		}
 
 		template<size_t...I>
 		inline typename container_t::const_iterator update_row(size_t row, const elem_t<I>& ... args)
@@ -622,26 +626,26 @@ namespace nl {
 			container_t::erase(it, container_t::end());
 		}
 
-		template<size_t I, typename Pred>
+		template<typename Pred>
 		auto where(Pred pred) const
 		{
 			relation_t ret_rel;
 			ret_rel.reserve(container_t::size());
 			std::copy_if(container_t::begin(), container_t::end(), std::back_inserter<relation_t>(ret_rel), [&](const tuple_t& value) {
-				return pred(std::get<I>(value));
+					return pred(value);
 				});
 		
 			ret_rel.shrink_to_fit();
 			return std::move(ret_rel);
 		}
 
-		template<size_t I, typename Predicate>
+		template<typename Predicate>
 		std::vector<size_t> where_index(Predicate p)
 		{
 			std::vector<size_t> ret;
 			ret.reserve(container_t::size());
 			for (size_t i = 0; i < container_t::size(); i++) {
-				if (p(nl::row_value<I>(tuple_at(i)))){
+				if (p(tuple_at(i))){
 					ret.emplace_back(i);
 				}
 			}
