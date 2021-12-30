@@ -36,7 +36,7 @@ namespace nl
 		{
 			using special_types = std::tuple<std::string, blob_t, nullptr_t, date_time_t, uuid>;
 		public:
-			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || index_of<special_types, T>::value >= 0) };
+			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || std::is_enum_v<T> || index_of<special_types, T>::value >= 0) };
 		};
 
 		
@@ -49,7 +49,7 @@ namespace nl
 			constexpr size_t col_id = (std::tuple_size_v<tuple_t> - (count + 1));
 			constexpr size_t position = col_id + 1;
 			using arg_type = std::decay_t<std::tuple_element_t<col_id, tuple_t>>;
-			static_assert(is_database_type<arg_type>::value, "Tuple type is not a valid database type");
+			static_assert(is_database_type<arg_type>::value, "Tuple type is not a valid database type");	
 			if constexpr (std::is_integral_v<arg_type>)
 			{
 				//64-bit int
@@ -100,7 +100,10 @@ namespace nl
 				auto blob = std::get<col_id>(tuple).to_blob();
 				return (SQLITE_OK == sqlite3_bind_blob(statement, position, blob.data(), blob.size(), SQLITE_TRANSIENT));
 			}
-
+			else if constexpr (std::is_enum_v<arg_type>) {
+				auto en = static_cast<std::uint32_t>(std::get<col_id>(tuple));
+				return (SQLITE_OK == sqlite3_bind_int(statement, position, en));
+			}
 			else
 			{
 				return false;
@@ -179,6 +182,10 @@ namespace nl
 				auto uuid = std::get<col_id>(tuple);
 				return (SQLITE_OK == sqlite3_bind_blob(statement, position, &uuid, uuid.size(), SQLITE_TRANSIENT));
 			}
+			else if constexpr (std::is_enum_v<arg_type>) {
+				auto en = static_cast<std::uint32_t>(std::get<col_id>(tuple));
+				return (SQLITE_OK == sqlite3_bind_int(statement, position, en));
+			}
 			else
 			{
 				return false;
@@ -255,7 +262,10 @@ namespace nl
 				}
 				return std::make_tuple(nl::uuid(boost::uuids::nil_uuid()));
 			}
-
+			else if constexpr (std::is_enum_v<arg_t>) {
+				auto en = static_cast<arg_t>(sqlite3_column_int(statement, col));
+				return std::make_tuple(en);
+			}
 
 			else if constexpr (std::is_same_v<arg_t, std::basic_string<wchar_t>>)
 			{assert(false && "no support for wide characters");}
