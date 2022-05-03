@@ -29,6 +29,22 @@ nl::database::database(const std::string_view& database_file)
 
 }
 
+nl::database::database(const std::filesystem::path& database_file)
+{
+	if(sqlite3_open(database_file.string().data(), &m_database_conn) == SQLITE_ERROR){
+		throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE");
+	}
+	//create a begin, begin_immediate, end and rollback statments, 0, 1, 2 and 3 in the m_statments table
+	query q;
+	prepare_query(q.begin());
+	prepare_query(q.clear().begin_immediate());
+	prepare_query(q.clear().end());
+	prepare_query(q.clear().roll_back());
+}
+
+
+
+
 nl::database::database(const database&& connection) noexcept
 {
 	if (m_database_conn != nullptr){
@@ -49,6 +65,23 @@ nl::database& nl::database::operator=(const database&& connection) noexcept
 	m_statements = std::move(connection.m_statements);
 	m_error_msg = std::move(connection.m_error_msg);
 	return (*this);
+}
+
+void nl::database::open(const std::filesystem::path& database_file)
+{
+	if (m_database_conn != nullptr) {
+		sqlite3_close(m_database_conn);
+	}
+	if (sqlite3_open(database_file.string().data(), &m_database_conn) == SQLITE_ERROR) {
+			throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE");
+	}
+	//create a begin, begin_immediate, end and rollback statments, 0, 1, 2 and 3 in the m_statments table
+	m_statements.clear();
+	query q;
+	prepare_query(q.begin());
+	prepare_query(q.clear().begin_immediate());
+	prepare_query(q.clear().end());
+	prepare_query(q.clear().roll_back());
 }
 
 nl::database::~database()

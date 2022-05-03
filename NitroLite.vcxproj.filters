@@ -63,6 +63,9 @@
     <ClInclude Include="Include\nl_types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\tuple_buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

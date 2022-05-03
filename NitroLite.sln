@@ -7,6 +7,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NitroLite", "NitroLite.vcxp
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DglopaPharmacyManager", "..\DglopaPharmacyManager\DglopaPharmacyManager.vcxproj", "{D3C07994-45C5-4264-BC9A-9E52AA890437}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NitroLiteTester", "..\NitroLiteTester\NitroLiteTester.vcxproj", "{3C113E33-D189-4270-ACF7-30A3B379C3CD}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Waterserver", "..\Waterserver\Waterserver.vcxproj", "{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +35,22 @@ Global
 		{D3C07994-45C5-4264-BC9A-9E52AA890437}.Release|x64.Build.0 = Release|x64
 		{D3C07994-45C5-4264-BC9A-9E52AA890437}.Release|x86.ActiveCfg = Release|Win32
 		{D3C07994-45C5-4264-BC9A-9E52AA890437}.Release|x86.Build.0 = Release|Win32
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Debug|x64.ActiveCfg = Debug|x64
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Debug|x64.Build.0 = Debug|x64
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Debug|x86.ActiveCfg = Debug|Win32
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Debug|x86.Build.0 = Debug|Win32
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Release|x64.ActiveCfg = Release|x64
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Release|x64.Build.0 = Release|x64
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Release|x86.ActiveCfg = Release|Win32
+		{3C113E33-D189-4270-ACF7-30A3B379C3CD}.Release|x86.Build.0 = Release|Win32
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Debug|x64.ActiveCfg = Debug|x64
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Debug|x64.Build.0 = Debug|x64
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Debug|x86.ActiveCfg = Debug|Win32
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Debug|x86.Build.0 = Debug|Win32
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Release|x64.ActiveCfg = Release|x64
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Release|x64.Build.0 = Release|x64
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Release|x86.ActiveCfg = Release|Win32
+		{C0B03255-BCF6-4E94-B1A6-B0D646F157DD}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -6,17 +6,14 @@
 namespace nl
 {
 	//todo: remove this template from this, not neccessary anymore
-	template<typename relation>
 	class relation_buffer
 	{
 	public:
-		typedef relation relation_t;
-		typedef typename relation_t::value_type tuple_t;
 		typedef std::vector<std::uint8_t> buffer_t;
 
 		relation_buffer() {}
-		explicit relation_buffer(const size_t& size) : mBuffer{ size } {
-
+		explicit relation_buffer(const size_t& size){
+			mBuffer.reserve(size);
 		}
 
 		template<typename T, std::enable_if_t<std::is_same_v<T, std::string>, int> = 0>
@@ -141,7 +138,7 @@ namespace nl
 		}
 
 
-		constexpr bool is_buffer_valid() const {
+		bool is_buffer_valid() const {
 			//
 			assert(!mBuffer.empty() && "Reading from an empty buffer");
 			assert(mReadHead != mBuffer.size() && "Read head at end");
@@ -166,30 +163,22 @@ namespace nl
 		size_t mReadHead{ 0 };
 	};
 
-	template<typename relation_t, template<typename> typename buffer_t>
-	void read_buffer(relation_t& rel, buffer_t<relation_t>& buffer)
+	template<typename relation_t>
+	void read_buffer(relation_t& rel, relation_buffer& buffer)
 	{
 		if constexpr (detail::has_base_relation<relation_t>::value || detail::is_relation_v<relation_t>)
 		{
 				assert(rel.empty() && "Relation should be empty, overwrite of data already in the buffer");
 				std::insert_iterator<typename relation_t::container_t> insert(rel, rel.begin());
-				while (!buffer.read_head_at_end())
-				{
-					if constexpr (detail::is_linear_relation<relation_t>::value)
-					{
-						std::back_insert_iterator<typename relation_t::container_t> back_insert(rel);
-						back_insert = std::forward<typename relation_t::tuple_t>(detail::loop<relation_t::column_count -1>::template do_buffer_read<relation_t, buffer_t>(buffer));
-					}
-					else if constexpr (detail::is_map_relation<relation_t>::value)
-					{
-						insert = std::forward<typename relation_t::tuple_t>(detail::loop<relation_t::column_count- 1>::template do_buffer_read<relation_t, buffer_t>(buffer));
-					}
+				while (!buffer.read_head_at_end()){
+					std::back_insert_iterator<typename relation_t::container_t> back_insert(rel);
+					back_insert = std::forward<typename relation_t::tuple_t>(detail::loop<relation_t::column_count -1>::template do_buffer_read<relation_t, relation_buffer>(buffer));
+
 				}
-			
 		}
 	}
-	template<typename relation_t, template<typename> typename buffer_t>
-	void write_buffer(relation_t& rel, buffer_t<relation_t>& buffer)
+	template<typename relation_t>
+	void write_buffer(relation_t& rel, relation_buffer& buffer) 
 	{
 		if constexpr (detail::has_base_relation<relation_t>::value || detail::is_relation_v<relation_t>)
 		{
@@ -197,7 +186,7 @@ namespace nl
 			for (auto& elem : rel)
 			{
 				auto& _elem = const_cast<std::remove_const_t<typename relation_t::container_t::value_type>&>(elem);
-				detail::loop<relation_t::column_count -1>::template do_buffer_write<relation_t, buffer_t>(buffer, _elem);
+				detail::loop<relation_t::column_count -1>::template do_buffer_write<relation_t, relation_buffer>(buffer, _elem);
 
 			}
 		}

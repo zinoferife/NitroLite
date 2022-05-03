@@ -5,6 +5,7 @@
 #include <cassert>
 #include <SQLite/sqlite3.h>
 #include <unordered_map>
+#include <filesystem>
 
 
 #include "relation.h"
@@ -117,9 +118,10 @@ namespace nl
 		
 		database();
 		explicit database(const std::string_view& database_file);
+		explicit database(const std::filesystem::path& database_file);
 		database(const database&& connection) noexcept;
 		database& operator=(const database&&) noexcept;
-
+		void open(const std::filesystem::path& database_file);
 		~database();
 
 		statement_index prepare_query(const std::string& query);

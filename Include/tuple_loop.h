@@ -281,21 +281,40 @@ namespace nl
 		class loop
 		{
 		public:
-			template<typename relation_t, template<typename> typename buffer_t>
-			static void do_buffer_write(buffer_t<relation_t>& buffer, typename relation_t::tuple_t& tuple)
+			template<typename relation_t, typename buffer_t>
+			static void do_buffer_write(buffer_t& buffer, typename relation_t::tuple_t& tuple)
 			{
 				loop<count - 1>::template do_buffer_write<relation_t, buffer_t>(buffer, tuple);
 				buffer.write(std::get<count>(tuple));
 			}
 
-			template<typename relation_t, template<typename> typename buffer_t>
-			static auto do_buffer_read(buffer_t<relation_t>& buffer)
+			template<typename relation_t, typename buffer_t>
+			static auto do_buffer_read(buffer_t& buffer)
 			{
 				auto t0 = loop<count - 1>::template do_buffer_read<relation_t, buffer_t>(buffer);
 				using arg_type = typename std::tuple_element_t<count, typename relation_t::tuple_t>;
 				arg_type object;
 				buffer.read(object);
 				return std::tuple_cat(t0, std::make_tuple(object));
+			}
+
+			template<typename tuple_t, template<typename> typename tbuffer_t>
+			static void do_tbuffer_write(tuple_t& tuple, tbuffer_t<tuple_t>& buffer) {
+				loop<count - 1>::template do_tbuffer_write<tuple_t, tbuffer_t>(tuple, buffer);
+				if (buffer.get_state()[count]) {
+					buffer.write(std::get<count>(tuple));
+				}
+			}
+
+			template<typename tuple_t, template<typename> typename tbuffer_t>
+			static void do_tbuffer_read(tuple_t& tuple, tbuffer_t<tuple_t>& buffer) {
+				loop<count - 1>::template do_tbuffer_read<tuple_t, tbuffer_t>(tuple, buffer);
+				if (buffer.get_state()[count]) {
+					using arg_type = typename std::tuple_element_t<count, tuple_t>;
+					arg_type object;
+					buffer.read(object);
+					std::get<count>(tuple) = std::move(object);
+				}
 			}
 
 			template<typename database_stmt, typename tuple_t>
@@ -455,20 +474,39 @@ namespace nl
 		class loop<0>
 		{
 		public:
-			template<typename relation_t, template<typename> typename buffer_t>
-			static void do_buffer_write(buffer_t<relation_t>& buffer, typename relation_t::tuple_t& tuple)
+			template<typename relation_t, typename buffer_t>
+			static void do_buffer_write(buffer_t& buffer, typename relation_t::tuple_t& tuple)
 			{
 				buffer.write(std::get<0>(tuple));
 			}
 			//TODO: const correct the buffer
-			template<typename relation_t, template<typename> typename buffer_t>
-			static auto do_buffer_read(buffer_t<relation_t>& buffer)
+			template<typename relation_t, typename buffer_t>
+			static auto do_buffer_read(buffer_t& buffer)
 			{
 				using arg_type = typename std::tuple_element_t<0, typename relation_t::tuple_t>;
 				arg_type object;
 				buffer.read(object);
 				return std::make_tuple(object);
 			}
+
+			template<typename tuple_t, template<typename> typename tbuffer_t>
+			static void do_tbuffer_write(tuple_t& tuple, tbuffer_t<tuple_t>& buffer) {
+				if (buffer.get_state()[0]) {
+					buffer.write(std::get<0>(tuple));
+				}
+			}
+
+			template<typename tuple_t, template<typename> typename tbuffer_t>
+			static void do_tbuffer_read(tuple_t& tuple, tbuffer_t<tuple_t>& buffer) {
+				if (buffer.get_state()[0]) {
+					using arg_type = typename std::tuple_element_t<0, tuple_t>;
+					arg_type object;
+					buffer.read(object);
+					std::get<0>(tuple) = std::move(object);
+				}
+			}
+
+
 			template<typename database_stmt, typename tuple_t>
 			static bool do_bind(database_stmt statement, const tuple_t& tuple)
 			{
@@ -611,26 +649,26 @@ namespace nl
 			bool operator()(const S& s, const T& t) const { return s < std::get<I>(t); }
 		};
 
-		template<typename rel, typename Compare, typename execution_policy = std::execution::sequenced_policy, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>
-		void sort_par(rel & rel, Compare comp, execution_policy policy = std::execution::seq)
+		template<typename rel_type, typename Compare, typename execution_policy = std::execution::sequenced_policy, std::enable_if_t<std::is_same_v<typename rel_type::container_t, std::list<typename rel_type::tuple_t>>, int> = 0>
+		void sort_par(rel_type & rel, Compare comp, execution_policy policy = std::execution::seq)
 		{
 			(void)policy;
 			rel.sort(comp);
 		}
 
-		template<typename rel, typename Compare, typename execution_policy = std::execution::sequenced_policy,  std::enable_if_t<std::is_same_v<typename rel::container_t, std::vector<typename rel::tuple_t>>, int> = 0>
-		void sort_par(rel & rel, Compare comp, execution_policy policy = std::execution::seq)
+		template<typename rel_type, typename Compare, typename execution_policy = std::execution::sequenced_policy,  std::enable_if_t<std::is_same_v<typename rel_type::container_t, std::vector<typename rel_type::tuple_t>>, int> = 0>
+		void sort_par(rel_type & rel, Compare comp, execution_policy policy = std::execution::seq)
 		{
 			std::sort(policy, rel.begin(), rel.end(), comp);
 		}
 		
-		template<typename rel, typename Compare, std::enable_if_t<std::is_same_v<typename rel::container_t, std::list<typename rel::tuple_t>>, int> = 0>
-		void sort(rel & rel, Compare comp){
+		template<typename rel_type, typename Compare, std::enable_if_t<std::is_same_v<typename rel_type::container_t, std::list<typename rel_type::tuple_t>>, int> = 0>
+		void sort(rel_type & rel, Compare comp){
 			rel.sort(comp);
 		}
 
-		template<typename rel, typename Compare, std::enable_if_t<std::is_same_v<typename rel::container_t, std::vector<typename rel::tuple_t>>, int> = 0>
-		void sort(rel & rel, Compare comp){
+		template<typename rel_type, typename Compare, std::enable_if_t<std::is_same_v<typename rel_type::container_t, std::vector<typename rel_type::tuple_t>>, int> = 0>
+		void sort(rel_type & rel, Compare comp){
 			std::sort(rel.begin(), rel.end(), comp);
 		}
 

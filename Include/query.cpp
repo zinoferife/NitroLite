@@ -14,7 +14,7 @@ query::query(const std::string& query)
 
 query& query::del(const std::string_view& table)
 {
-	mQuery << fmt::format("DELETE {} ", table);
+	mQuery << fmt::format("DELETE FROM {} ", table);
 	return (*this);
 }
 
