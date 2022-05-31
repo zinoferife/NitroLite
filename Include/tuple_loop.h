@@ -371,6 +371,9 @@ namespace nl
 				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_in");
 				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
 				using arg_type = std::tuple_element_t<col, tuple_t>;
+				using put_type = std::decay_t<T>;
+				static_assert(std::is_convertible_v<arg_type, put_type>,
+					"Value type is not convertible to the type stored in the tuple");
 				if (col == column)
 				{
 					put_in = std::get<col>(tuple);

@@ -232,6 +232,10 @@ namespace nl
 				mQuery << fmt::format("{} INTEGER ", name);
 				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);
 			}
+			else if constexpr (std::is_enum_v<T>) {
+				mQuery << fmt::format("{} INTEGER", name);
+				detail::query::loop<sizeof...(policies) - 1>::template do_policy<tuple_t>(mQuery);
+			}
 			return (*this);
 		}
 

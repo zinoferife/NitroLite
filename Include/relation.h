@@ -204,7 +204,7 @@ namespace nl {
 		{
 			return std::find_if(container_t::begin(), container_t::end(), [&](const tuple_t& tuple) {
 				return(value == std::get<col>(tuple));
-				});
+			});
 		}
 
 		//returns an int to indicate index not found with -1
