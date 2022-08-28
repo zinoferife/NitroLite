@@ -372,10 +372,10 @@ namespace nl
 				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
 				using arg_type = std::tuple_element_t<col, tuple_t>;
 				using put_type = std::decay_t<T>;
-				static_assert(std::is_convertible_v<arg_type, put_type>,
-					"Value type is not convertible to the type stored in the tuple");
 				if (col == column)
 				{
+					static_assert(std::is_convertible_v<arg_type, put_type>,
+					"Value type is not convertible to the type stored in the tuple");
 					put_in = std::get<col>(tuple);
 					return;
 				}
@@ -392,8 +392,7 @@ namespace nl
 				{
 					if constexpr (std::is_same_v<date_time_t, arg_type>)
 					{
-						return fmt::format("{}:{}", nl::to_string_date(std::get<col>(tuple)),
-							nl::to_string_time(std::get<col>(tuple)));
+						return fmt::format("{}", nl::to_string_date(std::get<col>(tuple)));
 					}else if constexpr (std::is_integral_v<arg_type>){
 						return fmt::format("{:d}", std::get<col>(tuple));
 					}
