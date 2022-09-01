@@ -18,6 +18,7 @@
 
 #include <fmt/format.h>
 
+#include <boost/asio.hpp>
 #include <boost/asio/strand.hpp>
 
 #include <nlohmann/json.hpp>
