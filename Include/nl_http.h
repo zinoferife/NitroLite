@@ -9,7 +9,6 @@
 //
 
 
-#include <boost/signals2.hpp>
 
 #include <boost/beast.hpp>
 #include <boost/beast/core.hpp>
@@ -32,6 +31,12 @@
 #include <algorithm>
 
 #include <vector>
+#include <mutex>
+#include <future>
+
+
+#include "nl_net_exceptions.h"
+
 
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
@@ -43,83 +48,73 @@ using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 
 namespace nl {
 	namespace js = nlohmann;
-	template<class request_body, class response_body = http::string_body>
-	class session : public std::enable_shared_from_this<session<request_body, response_body>>
+	//the session is a single request and reponse cycle 
+	//should runs on the thread or threads that call one of the 
+
+	template<class response_body, class request_body = http::empty_body>
+	class session : public std::enable_shared_from_this<session<response_body, request_body>>
 	{
 	public:
+		static_assert(std::conjunction_v<http::is_body<response_body>, http::is_body<request_body>>,
+			"response body or request body is not supported by the session class");
+
 		typedef http::request<request_body> request_type;
 		typedef http::response<response_body> response_type;
-		typedef boost::signals2::signal<void(const typename response_body::value_type & res)> response_signal_type;
-		typedef boost::signals2::signal<void(const std::string& what)> error_signal_type;
-		typedef boost::signals2::signal<void(void)> cancel_signal_type;
+		typedef std::promise<typename response_body::value_type> promise_t;
+		typedef std::future<typename response_body::value_type> future_t;
 
-		explicit session(net::io_context& ioc) : resolver(net::make_strand(ioc)),
-			stream(net::make_strand(ioc))
+		explicit session(net::io_context& ioc) : m_resolver(net::make_strand(ioc)),
+			m_stream(net::make_strand(ioc))
 		{
-			//set the maximum size of the read flat_buffer, to avoid buffer overflow attacks
+			//set the maximum size of the read flat_buffer, to avoid buffer overflow
 			//catch buffer_overflow errors when this maximum is exceeeded, 
 			//but how do i know the maximum buffer size for both the input sequence and the output sequence
 		}
+		session(session&& rhs)
+		{
+			m_resolver = std::move(rhs.m_resolver);
+			m_stream = std::move(rhs.m_resolver);
+			m_buffer = std::move(rhs.m_buffer);
+			m_req =  std::move(rhs.m_req);
+			m_res =  std::move(rhs.m_res);
+			m_promise = std::move(rhs.m_promise);
+		}
+		
+		session& operator=(session&& rhs) {
+			m_resolver = std::move(rhs.m_resolver);
+			m_stream = std::move(rhs.m_resolver);
+			m_buffer = std::move(rhs.m_buffer);
+			m_req = std::move(rhs.m_req);
+			m_res = std::move(rhs.m_res);
+			m_promise = std::move(rhs.m_promise);
+		}
 
-		void get(const std::string& host,
+
+		//the copy constructor and the copy assignment is deleted, to prevent copying
+		session(const session&) = delete;
+		session& operator=(const session&) = delete;
+
+		~session() {}
+
+
+		template<http::verb verb>
+		future_t req(const std::string& host,
 			const std::string& port,
 			const std::string& target,
-			const typename response_signal_type::slot_type& response_slot,
-			const error_signal_type::slot_type& error_slot)
-		{
-			mResponseSignal.connect(response_slot);
-			mErrorSignal.connect(error_slot);
-			//prepare the request, 
-			prepare_request(target, host, http::verb::get, http::empty_body{}, 11);
-			resolver.async_resolve(host,
+			typename request_type::body_type const& body = http::empty_body{}) {
+			prepare_request(target, host, verb, body, 11);
+			m_resolver.async_resolve(host,
 				port,
 				beast::bind_front_handler(
 					&session::on_resolve,
 					this->shared_from_this()));
+			return (m_promise.get_future());
 		}
 
-		//put request to put data in the server
-		void put(const std::string& host,
-			const std::string& port,
-			const std::string& target,
-			typename request_type::body_type const& body,
-			const typename response_signal_type::slot_type& response_slot,
-			const error_signal_type::slot_type& error_slot)
-		{
-			mResponseSignal.connect(response_slot);
-			mErrorSignal.connect(error_slot);
-
-			//prepare request
-			prepare_request(target, host, http::verb::put, body, 11);
-			resolver.async_resolve(host,
-				port,
-				beast::bind_front_handler(
-					&session::on_resolve,
-					this->shared_from_this()));
-		}
-		void post(const std::string& host,
-			const std::string& port,
-			const std::string& target,
-			typename request_type::body_type const& body,
-			const typename response_signal_type::slot_type& response_slot,
-			const error_signal_type::slot_type& error_slot)
-		{
-			mResponseSignal.connect(response_slot);
-			mErrorSignal.connect(error_slot);
-
-			//prepare request
-			prepare_request(target, host, http::verb::post, body, 11);
-			resolver.async_resolve(host,
-				port,
-				beast::bind_front_handler(
-					&session::on_resolve,
-					this->shared_from_this()));
+		void cancel() {
+			m_stream.socket().cancel();
 		}
 
-	public:
-		void set_mime_type(std::string_view view) {
-			mime_type = view;
-		}
 	private:
 		//call backs for async functions
 		void on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
@@ -127,10 +122,10 @@ namespace nl {
 				return on_fail(ec);
 
 			// Set a timeout on the operation
-			stream.expires_after(std::chrono::seconds(30));
+			m_stream.expires_after(std::chrono::seconds(30));
 
 			// Make the connection on the IP address we get from a lookup
-			stream.async_connect(results,
+			m_stream.async_connect(results,
 				beast::bind_front_handler(
 					&session::on_connect,
 					this->shared_from_this()));
@@ -140,10 +135,12 @@ namespace nl {
 				return on_fail(ec);
 
 			// Set a timeout on the operation
-			stream.expires_after(std::chrono::seconds(30));
+			m_stream.expires_after(std::chrono::seconds(30));
 
 			// Send the HTTP request to the remote host
-			http::async_write(stream, req, beast::bind_front_handler(&session::on_write, this->shared_from_this()));
+			http::async_write(m_stream, 
+				m_req, beast::bind_front_handler(&session::on_write,
+				this->shared_from_this()));
 		}
 		void on_write(beast::error_code ec, size_t bytes) {
 			boost::ignore_unused(bytes);
@@ -152,13 +149,12 @@ namespace nl {
 				return on_fail(ec);
 
 			// Receive the HTTP response
-			http::async_read(stream, buffer, res,
+			http::async_read(m_stream, m_buffer, m_res,
 				beast::bind_front_handler(
 					&session::on_read,
 					this->shared_from_this()));
 		}
-
-
+		
 		void on_read(beast::error_code ec, size_t bytes) {
 			boost::ignore_unused(bytes);
 
@@ -166,22 +162,30 @@ namespace nl {
 				return on_fail(ec);
 
 			// Gracefully close the socket
-			stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+			m_stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
 			// not_connected happens sometimes so don't bother reporting it.
 			if (ec && ec != beast::errc::not_connected)
 				return on_fail(ec);
 
-			//parse and collect the body, send signal to all the modules that one to signaled by
-			//this session
-			typename response_body::value_type body = res.body();
-			//the respose slots are responsible for any multi-threading sync
-			mResponseSignal(body);
+			//push the result of the respone to the 
+			m_promise.set_value(m_res.body());
+	
 		}
 
 		void on_fail(beast::error_code ec) {
-			auto what = fmt::format("{}, {:d}", ec.message(), ec.value());
-			mErrorSignal(what);
+			//causes the future end of the communication channel to throw an exception
+			try {
+				//throw 
+				throw nl::session_error(ec);
+			}
+			catch (...) {
+				try {
+					m_promise.set_exception(std::current_exception());
+				}
+				catch (...) {} // do nothing if set_exception throws. mostly writing to a used promise
+			}
+
 		}
 
 	private:
@@ -196,13 +200,13 @@ namespace nl {
 			if constexpr (std::is_same_v<request_body, http::string_body>) {
 				//if not empty body
 				//string bodies
-				req.version(version);
-				req.method(verb);
-				req.target(target.c_str());
-				req.set(http::field::host, host.c_str());
-				req.set(http::field::user_agent, NITROLITE_USER_AGENT_STRING);
-				req.body() = body;
-				req.prepare_payload();
+				m_req.version(version);
+				m_req.method(verb);
+				m_req.target(target.c_str());
+				m_req.set(http::field::host, host.c_str());
+				m_req.set(http::field::user_agent, NITROLITE_USER_AGENT_STRING);
+				m_req.body() = body;
+				m_req.prepare_payload();
 			}
 			else if constexpr (std::is_same_v<request_body, http::file_body>) {
 				//if request is a file body 
@@ -213,59 +217,46 @@ namespace nl {
 				req_.target(target.c_str());
 				req_.set(http::field::host, host.c_str());
 				req_.set(http::field::user_agent, NITROLITE_USER_AGENT_STRING);
-				req = std::move(req_);
-				req.prepare_payload();
+				m_req = std::move(req_);
+				m_req.prepare_payload();
 
 			}
 			else if constexpr (std::is_same_v<request_body, http::empty_body>) {
 				// the body is empty, usual get request have empty bodies
-				req.version(version);
-				req.method(verb);
-				req.target(target.c_str());
-				req.set(http::field::host, host.c_str());
-				req.set(http::field::user_agent, NITROLITE_USER_AGENT_STRING);
+				m_req.version(version);
+				m_req.method(verb);
+				m_req.target(target.c_str());
+				m_req.set(http::field::host, host.c_str());
+				m_req.set(http::field::user_agent, NITROLITE_USER_AGENT_STRING);
 			}
 			//ignore all other bodies for now
 		}
 
-	public:
-		//signal slots
-		//connect a slot to the signal
-		//returns the connection so that the slot management is done by the caller
-		std::pair<boost::signals2::connection, boost::signals2::connection> slot(const typename response_signal_type::slot_type& res_slot,
-			const error_signal_type::slot_type& error_slot)
-		{
-			return { mResponseSignal.connect(res_slot), mErrorSignal.connect(error_slot) };
-
-		}
-
-		void set_cancel_operation_slot(cancel_signal_type& cancel_signal) {
-			cancel_signal.connect(std::bind(&cancel_operation, this));
-		}
 
 	private:
 		void cancel_operation() {
 
 		}
 
+
 	private:
-		response_signal_type mResponseSignal;
-		error_signal_type mErrorSignal;
-		tcp::resolver resolver;
-		beast::tcp_stream stream;
+		
+		tcp::resolver m_resolver;
+		beast::tcp_stream m_stream;
 
-		beast::flat_buffer buffer;
-		request_type req;
-		response_type res;
+		beast::flat_buffer m_buffer;
+		request_type m_req;
+		response_type m_res;
+	
+		//promise
+		promise_t m_promise;
 
-		//for files 
-		std::string_view mime_type;
 	};
-	template<typename req_body, typename res_body = std::string>
-	using http_session_weak_ptr = std::weak_ptr<session<req_body, res_body>>;
+	template<typename res_body, typename req_body = http::empty_body>
+	using http_session_weak_ptr = std::weak_ptr<session<res_body, req_body>>;
 
-	template<typename req_body, typename res_body = std::string>
-	using http_session_shared_ptr = std::shared_ptr<session<req_body, res_body>>;
+	template<typename res_body, typename req_body = http::empty_body>
+	using http_session_shared_ptr = std::shared_ptr<session<res_body, req_body>>;
 
 
 	// message frame??
@@ -327,6 +318,7 @@ namespace nl {
 
 	};
 
+	/*
 
 	//websocket session
 	template<typename T = std::string>
@@ -544,7 +536,7 @@ namespace nl {
 	template<typename T = std::string>
 	using ws_session_shared_ptr = std::shared_ptr<ws_session<T>>;
 
-
+	*/
 	
 }
 

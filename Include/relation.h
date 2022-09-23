@@ -293,7 +293,7 @@ namespace nl {
 			for (auto iter = container_t::begin(); iter != container_t::end(); iter++) {
 				group_map[std::get<I>(*iter)].push_back(*iter);
 			}
-			return std::move(group_map);
+			return group_map;
 		}
 
 		//O(M+n) complexity in time
@@ -319,7 +319,7 @@ namespace nl {
 					new_relation.emplace_back(std::tuple_cat(*this_iter, *(find_iter->second)));;
 				}
 			}
-			return std::move(new_relation);
+			return new_relation;
 		}
 
 		template<size_t I, typename Predicate>
@@ -360,7 +360,7 @@ namespace nl {
 			std::transform(container_t::begin(), container_t::end(), isolated_column.begin(), [&](tuple_t& row) -> elem_t<I> {
 				return std::get<I>(row);
 			});
-			return std::move(isolated_column);
+			return isolated_column;
 		}
 
 		template<size_t I>
@@ -372,7 +372,7 @@ namespace nl {
 			{
 				isolated_column.emplace_back(std::ref(std::get<I>(item)));
 			}
-			return std::move(isolated_column);
+			return isolated_column;
 		}
 
 		inline void del_back()
@@ -430,14 +430,22 @@ namespace nl {
 				return relation_t{};
 			}
 			relation_t ret;
+			try {
+				ret.reserve(container_t::size());
+			}
+			catch (std::bad_alloc& exp) {
+				//catch memory 
+
+			}
 			for (auto iter = container_t::begin(); iter != container_t::end(); iter++)
 			{
 				if (std::regex_match(std::get<I>(*iter), expresion))
 				{
-					ret.push_back(*iter);
+					ret.emplace_back(*iter);
 				}
 			}
-			return std::move(ret);
+			ret.shrink_to_fit();
+			return ret;
 		}
 
 		template<size_t I>
@@ -466,7 +474,7 @@ namespace nl {
 			std::transform(container_t::begin(), container_t::end(), new_relation.begin(), [&](tuple_t& row_) -> T {
 				return std::make_tuple(std::get<I>(row_)...);
 			});
-			return std::move(new_relation);
+			return new_relation;
 		}
 
 		template<size_t...I>
@@ -477,7 +485,7 @@ namespace nl {
 			std::transform(container_t::begin(), container_t::end(), new_relation.begin(), [&](tuple_t& row_) -> T {
 				return std::make_tuple(std::get<I>(row_)...);
 			});
-			return std::move(new_relation);
+			return new_relation;
 		}
 		
 
@@ -539,7 +547,7 @@ namespace nl {
 		}
 
 		static inline auto make_row(const val&... values){
-			return std::move(std::make_tuple(values...));
+			return std::make_tuple(values...);
 		}
 
 		static inline void set_default_row(const val& ... values)
@@ -593,7 +601,7 @@ namespace nl {
 				std::back_insert_iterator<container_t>(ret), [&](const tuple_t& tuple1, const tuple_t& tuple2)-> bool {
 					return (std::get<I>(tuple1) < std::get<I>(tuple2));
 			});
-			return std::move(ret);
+			return ret;
 		}
 
 		bool is_sub_relation(const relation_t& rel)
@@ -636,7 +644,7 @@ namespace nl {
 				});
 		
 			ret_rel.shrink_to_fit();
-			return std::move(ret_rel);
+			return ret_rel;
 		}
 
 		template<typename Predicate>
@@ -701,7 +709,7 @@ namespace nl {
 				return pred(std::get<I>(value));
 				});
 
-			return std::move(ret_rel);
+			return ret_rel;
 		}
 
 		template<size_t I, typename Pred, typename execution_policy = std::execution::parallel_policy>
@@ -768,7 +776,7 @@ namespace nl {
 				lock.unlock();
 				new_relation[index] = std::make_tuple(std::get<I>(value)...);
 			});
-			return std::move(new_relation);
+			return new_relation;
 		}
 		
 
@@ -804,7 +812,7 @@ namespace nl {
 					new_relation.push_back(std::forward<type>(std::tuple_cat(value, *(find_iter->second))));
 				}
 			});
-			return std::move(new_relation);
+			return new_relation;
 		}
 
 		template<size_t col, typename execution_policy = std::execution::parallel_policy >

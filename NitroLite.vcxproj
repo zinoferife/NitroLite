@@ -165,6 +165,8 @@
   <ItemGroup>
     <ClInclude Include="Include\Database.h" />
     <ClInclude Include="Include\hierarchy_creation.h" />
+    <ClInclude Include="Include\nl_http.h" />
+    <ClInclude Include="Include\nl_net_exceptions.h" />
     <ClInclude Include="Include\nl_time.h" />
     <ClInclude Include="Include\nl_uuid.h" />
     <ClInclude Include="Include\query.h" />
@@ -174,6 +176,7 @@
     <ClInclude Include="Include\table.h" />
     <ClInclude Include="Include\table_listener.h" />
     <ClInclude Include="Include\tuple_buffer.h" />
+    <ClInclude Include="Include\tuple_json.h" />
     <ClInclude Include="Include\tuple_loop.h" />
     <ClInclude Include="Include\tuple_t_operations.h" />
     <ClInclude Include="Include\nl_types.h" />
@@ -184,6 +187,7 @@
   <ItemGroup>
     <ClCompile Include="Include\Database.cpp" />
     <ClCompile Include="Include\query.cpp" />
+    <ClCompile Include="nl_net_exceptions.cpp" />
     <ClCompile Include="nl_time.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
