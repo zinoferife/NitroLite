@@ -75,6 +75,9 @@
     <ClInclude Include="Include\nl_net_exceptions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\rel_view.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

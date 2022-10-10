@@ -52,7 +52,7 @@ namespace nl
 	template<typename ... val>
 	struct variant_no_duplicate<std::tuple<val...>>
 	{
-		using type = std::variant<val...>;
+		using type = std::variant<std::monostate, val...>;
 	};
 
 	template<typename tuple>

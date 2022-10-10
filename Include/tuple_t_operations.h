@@ -37,9 +37,12 @@ namespace nl
 		};
 
 		template<typename T, typename S>
-		struct join_tuple_type
+		struct join_tuple_type;
+
+		template<typename... Ts, typename... Ss>
+		struct join_tuple_type<std::tuple<Ts...>, std::tuple<Ss...>>
 		{
-			using type = decltype(std::tuple_cat(T{}, S{}));
+			using type = std::tuple<Ts..., Ss...>;
 		};
 
 		template<typename T>

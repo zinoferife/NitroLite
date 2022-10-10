@@ -172,6 +172,7 @@
     <ClInclude Include="Include\query.h" />
     <ClInclude Include="Include\relation.h" />
     <ClInclude Include="Include\relation_buffer.h" />
+    <ClInclude Include="Include\rel_view.h" />
     <ClInclude Include="Include\Singleton.h" />
     <ClInclude Include="Include\table.h" />
     <ClInclude Include="Include\table_listener.h" />

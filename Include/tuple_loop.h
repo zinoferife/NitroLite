@@ -413,6 +413,41 @@ namespace nl
 				return loop<count - 1>::get_as_string(tuple, column);
 			}
 
+			template<typename tuple_t>
+			static auto get_as_string_ref(const tuple_t& tuple, size_t column) -> std::string
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_as_string");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> -(count + 1));
+				using arg_type = std::decay_t<typename std::tuple_element_t<col, tuple_t>::type>;
+
+				if (col == column)
+				{
+					if constexpr (std::is_same_v<date_time_t, arg_type>)
+					{
+						return fmt::format("{}", nl::to_string_date(std::get<col>(tuple)));
+					}
+					else if constexpr (std::is_integral_v<arg_type>) {
+						return fmt::format("{:d}", std::get<col>(tuple).get());
+					}
+					else if constexpr (std::is_floating_point_v<arg_type>) {
+						return fmt::format("{:.4f}", std::get<col>(tuple).get());
+					}
+					else if constexpr (std::is_same_v<nl::uuid, arg_type>) {
+						return fmt::format("{:q}", std::get<col>(tuple).get());
+					}
+					else if constexpr (fmt::is_formattable<arg_type>::value) {
+						return fmt::format("{}", std::get<col>(tuple).get());
+					}
+					else {
+						//null type lol 
+						return std::string();
+					}
+				}
+				return loop<count - 1>::get_as_string_ref(tuple, column);
+			}
+
+
+
 			template<typename tuple_t, typename T>
 			static void put_value_in(tuple_t& tuple, const  T& value, size_t column)
 			{
@@ -441,7 +476,7 @@ namespace nl
 					if (std::holds_alternative<arg_type>(variant)) {
 						nl::row_value<col>(tuple) = std::get<arg_type>(variant);
 						return;
-					}
+					}else return; //error type mismatch in the variant, should throw an exception
 				}
 				return loop<count - 1>::set_from_variant(tuple, variant, column);
 			}
@@ -556,6 +591,7 @@ namespace nl
 				}
 			}
 
+
 			template<typename tuple_t>
 			static auto get_as_string(const tuple_t& tuple, size_t column) -> std::string
 			{
@@ -580,6 +616,39 @@ namespace nl
 					}
 					else if constexpr (fmt::is_formattable<arg_type>::value) {
 						return fmt::format("{}", std::get<col>(tuple));
+					}
+					else {
+						//null type lol 
+						return std::string();
+					}
+				}
+				return std::string();
+			}
+
+			template<typename tuple_t>
+			static auto get_as_string_ref(const tuple_t& tuple, size_t column) -> std::string
+			{
+				assert((column < std::tuple_size_v<tuple_t>) && "Invalid \'column\' in get_as_string");
+				constexpr size_t col = (std::tuple_size_v<tuple_t> -1);
+				using arg_type = std::decay_t<typename std::tuple_element_t<col, tuple_t>::type>;
+				if (col == column)
+				{
+					if constexpr (std::is_same_v<date_time_t, arg_type>)
+					{
+						return fmt::format("{}:{}", nl::to_string_date(std::get<col>(tuple)),
+							nl::to_string_time(std::get<col>(tuple)).get());
+					}
+					else if constexpr (std::is_integral_v<arg_type>) {
+						return fmt::format("{:d}", std::get<col>(tuple).get());
+					}
+					else if constexpr (std::is_floating_point_v<arg_type>) {
+						return fmt::format("{:.4f}", std::get<col>(tuple).get());
+					}
+					else if constexpr (std::is_same_v<nl::uuid, arg_type>) {
+						return fmt::format("{:q}", std::get<col>(tuple).get());
+					}
+					else if constexpr (fmt::is_formattable<arg_type>::value) {
+						return fmt::format("{}", std::get<col>(tuple).get());
 					}
 					else {
 						//null type lol 
