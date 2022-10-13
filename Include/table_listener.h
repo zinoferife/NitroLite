@@ -12,37 +12,37 @@ namespace nl {
 	{
 		typedef R return_type;
 		typedef void* instance_ptr;
-		typedef R(*instance_function)(instance_ptr, Args...);
+		typedef R(*instance_function)(instance_ptr, Args&&...);
 		typedef std::pair<instance_ptr, instance_function> listener;
 
-		template<R(*function)(Args...)>
-		static inline R function_stub(instance_ptr, Args... args)
+		template<R(*function)(Args&&...)>
+		static inline R function_stub(instance_ptr, Args&&... args)
 		{
-			return (function)(args...);
+			return (function)(std::forward<Args>(args)...);
 		}
 
-		template<class C, R(C::*mem_function)(Args...)>
-		static inline R mem_function_stub(instance_ptr instance, Args... arg)
+		template<class C, R(C::*mem_function)(Args&&...)>
+		static inline R mem_function_stub(instance_ptr instance, Args&&... arg)
 		{
-			return (static_cast<C*>(instance)->*mem_function)(arg...);
+			return (static_cast<C*>(instance)->*mem_function)(std::forward<Args>(arg)...);
 		}
 
 	public:
 		static constexpr size_t arg_count = sizeof...(Args);
 		table_listener() {}
-		template<R(*function)(Args...)>
+		template<R(*function)(Args&&...)>
 		void add_listener()
 		{
 			m_listeners.emplace_back(std::make_pair(nullptr, &function_stub<function>));
 		}
 
-		template<class C, R(C::*mem_func)(Args...)>
+		template<class C, R(C::*mem_func)(Args&&...)>
 		void add_listener(C* instance)
 		{
 			m_listeners.emplace_back(std::make_pair(instance, &mem_function_stub<C, mem_func>));
 		}
 
-		template<R(*function)(Args...)>
+		template<R(*function)(Args&&...)>
 		void remove_listener()
 		{
 			auto it = std::remove_if(m_listeners.begin(), m_listeners.end(), [&](listener& listen)-> bool {
@@ -50,7 +50,7 @@ namespace nl {
 				});
 			if(it != m_listeners.end()) m_listeners.erase(it, m_listeners.end());
 		}
-		template<class C, R(C::* mem_func)(Args...)>
+		template<class C, R(C::* mem_func)(Args&&...)>
 		void remove_listener(C* instance)
 		{
 			auto it = std::remove_if(m_listeners.begin(), m_listeners.end(), [&](listener& listen)-> bool {
@@ -59,7 +59,7 @@ namespace nl {
 			if(it != m_listeners.end()) m_listeners.erase(it, m_listeners.end());
 		}
 
-		void notify(Args&... arg) const
+		void notify(Args&&... arg) const
 		{
 			if (!m_listeners.empty())
 			{
