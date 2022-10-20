@@ -145,6 +145,12 @@ query& query::not_(const std::string_view& condition)
 	return (*this);
 }
 
+query& nl::query::between(const std::string_view& v1, const std::string_view& v2)
+{
+	mQuery << fmt::format("BETWEEN {} AND {}", v1, v2);
+	return (*this);
+}
+
 query& query::create_trigger(const std::string_view& trig_name, const std::string_view& table_name)
 {
 	//not complete, forgot how to write trigger commands 

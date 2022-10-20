@@ -67,13 +67,13 @@ namespace nl {
 		template<typename iter_first, typename iter_last>
 		explicit relation(iter_first first, iter_last last) : container_t(first, last) {}
 		relation(const relation& val) : container_t(val) {}
-		relation(const relation&& val) noexcept : container_t(std::move(val)) {};
+		relation(relation&& val) noexcept : container_t(std::move(val)) {};
 		relation& operator=(const relation& rhs)
 		{
 			container_t::operator=(rhs);
 			return (*this);
 		}
-		relation& operator=(const relation&& rhs) noexcept
+		relation& operator=(relation&& rhs) noexcept
 		{
 			container_t::operator=(std::move(rhs));
 			return (*this);

@@ -78,6 +78,9 @@
     <ClInclude Include="Include\rel_view.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\nl_database_exception.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -96,6 +99,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="nl_net_exceptions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nl_database_exception.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

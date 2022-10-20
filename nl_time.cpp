@@ -31,6 +31,70 @@ std::string nl::to_string_time(const date_time_t& date_time)
 	return std::string(fmt::format("{:%R}", fmt::localtime(time)));	
 }
 
+nl::date_time_duration_t nl::time_since_midnight()
+{
+	auto now = nl::clock::now();
+
+	std::time_t tnow = nl::clock::to_time_t(now);
+	tm date;
+	localtime_s(&date, &tnow);
+	date.tm_mday += 1;
+	date.tm_hour = 0;
+	date.tm_min = 0;
+	date.tm_sec = 0;
+
+	auto midnight = nl::clock::from_time_t(std::mktime(&date));
+
+	return now - midnight;
+}
+
+nl::date_time_duration_t nl::time_since_midnight(const nl::date_time_t& now)
+{
+	std::time_t tnow = nl::clock::to_time_t(now);
+	tm date;
+	localtime_s(&date, &tnow);
+	date.tm_mday += 1;
+	date.tm_hour = 0;
+	date.tm_min = 0;
+	date.tm_sec = 0;
+
+	auto midnight = nl::clock::from_time_t(std::mktime(&date));
+
+	return now - midnight;
+}
+
+nl::date_time_duration_t nl::time_to_midnight()
+{
+	auto now = nl::clock::now();
+
+	std::time_t tnow = nl::clock::to_time_t(now);
+	tm date; 
+	localtime_s(&date, &tnow);
+	date.tm_mday += 1;
+	date.tm_hour = 0;
+	date.tm_min = 0;
+	date.tm_sec = 0;
+
+	auto midnight = nl::clock::from_time_t(std::mktime(&date));
+
+	return midnight - now;
+}
+
+nl::date_time_duration_t nl::time_to_midnight(const nl::date_time_t& now)
+{
+	std::time_t tnow = nl::clock::to_time_t(now);
+	tm date;
+	localtime_s(&date, &tnow);
+	date.tm_mday += 1;
+	date.tm_hour = 0;
+	date.tm_min = 0;
+	date.tm_sec = 0;
+
+	auto midnight = nl::clock::from_time_t(std::mktime(&date));
+
+	return midnight - now;
+}
+
 nl::date_time_t nl::from_string_time(const std::string& date_time)
 {
 	//24-hour and 12 hour clock

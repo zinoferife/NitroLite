@@ -181,5 +181,13 @@ namespace nl
 
 		template<typename tuple>
 		using reverse_t = typename reverse<tuple>::type;
+
+		template<typename T, typename... List>
+		struct first_type_from_list {
+			using type = T;
+		};
+
+		template<typename... List>
+		using first_type_from_list_t = typename first_type_from_list<List...>::type;
 	}
 }

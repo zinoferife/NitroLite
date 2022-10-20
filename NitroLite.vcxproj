@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -165,6 +165,7 @@
   <ItemGroup>
     <ClInclude Include="Include\Database.h" />
     <ClInclude Include="Include\hierarchy_creation.h" />
+    <ClInclude Include="Include\nl_database_exception.h" />
     <ClInclude Include="Include\nl_http.h" />
     <ClInclude Include="Include\nl_net_exceptions.h" />
     <ClInclude Include="Include\nl_time.h" />
@@ -188,6 +189,7 @@
   <ItemGroup>
     <ClCompile Include="Include\Database.cpp" />
     <ClCompile Include="Include\query.cpp" />
+    <ClCompile Include="nl_database_exception.cpp" />
     <ClCompile Include="nl_net_exceptions.cpp" />
     <ClCompile Include="nl_time.cpp" />
     <ClCompile Include="pch.cpp">

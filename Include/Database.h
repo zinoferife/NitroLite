@@ -6,10 +6,12 @@
 #include <SQLite/sqlite3.h>
 #include <unordered_map>
 #include <filesystem>
-
+#include <functional>
 
 #include "relation.h"
 #include "query.h"
+#include "nl_database_exception.h"
+
 /*
 	NitroLite uses sqlite for database connectivity
 	this class represents a single connection to a database
@@ -28,7 +30,8 @@ namespace nl
 	};
 
 	//database events
-	
+	using namespace std::literals::string_literals;
+	using namespace std::literals::string_view_literals;
 	enum database_evt
 	{
 		D_INSERT = SQLITE_INSERT,
@@ -119,8 +122,8 @@ namespace nl
 		database();
 		explicit database(const std::string_view& database_file);
 		explicit database(const std::filesystem::path& database_file);
-		database(const database&& connection) noexcept;
-		database& operator=(const database&&) noexcept;
+		database(database&& connection) noexcept;
+		database& operator=(database&&) noexcept;
 		void open(const std::filesystem::path& database_file);
 		~database();
 
@@ -132,7 +135,9 @@ namespace nl
 		inline const int get_error_code() const { return sqlite3_errcode(m_database_conn); }
 		void remove_statement(nl::database::statement_index index);
 		bool is_open() const { return (m_database_conn != nullptr); }
-		bool connect(const std::string_view& file);
+		void exec_once(statement_index index);
+		void exec_rollback();
+		void connect(const std::string_view& file);
 		void cancel();
 		
 	public:
@@ -144,6 +149,7 @@ namespace nl
 		bool set_auth_handler(auth callback, void* UserData);
 		void set_progress_handler(progress_callback callback, void* UserData, int frq);
 		bool register_extension(const sql_extension_func_aggregate& ext);
+		void flush_database();
 	
 	//template functions cover
 	public:	
@@ -173,55 +179,50 @@ namespace nl
 
 		template<typename relation, typename...T>
 		std::enable_if_t<nl::detail::is_relation_v<relation>, bool> 
-			insert(statement_index index, const relation& rel ,T... args)
+			insert(statement_index index, const relation& rel ,const T&... args)
 		{
 			return do_query_insert_para(index, rel, args...);
 		}
 
 		template<typename relation, typename row_t, typename... T>
 		std::enable_if_t<nl::detail::is_relation_row_v<row_t, relation>, bool>
-			insert(statement_index index, const row_t& row, T... args)
+			insert(statement_index index, const row_t& row, const T&... args)
 		{
 			return do_query_insert_para_row(index, row, args...);
 		}
 
-		bool exec_once(statement_index index);
 		
 		template<typename... Args>
 		bool bind(statement_index index, Args&&... args)
 		{
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()) {
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
+			auto statement = iter->second;
 			constexpr size_t size = sizeof...(args);
 			return nl::detail::loop<size - 1>::do_bind(statement, std::forward_as_tuple<Args...>(args...));
 		}
 
 		template<typename... Args, typename... Para>
 		bool bind_para(statement_index index, std::tuple<Args...>&& data, const Para& ... paras) {
-			using para_t = std::tuple<const Para...>;
-			using first_t = std::tuple_element_t<0, para_t>;
-			static_assert(std::is_convertible_v<first_t, std::string> || std::is_integral_v<first_t>, "Parameters must be either an interger or a string");
-			static_assert(std::conjunction_v<std::is_convertible<Para, 
-				std::conditional_t<std::is_integral_v<first_t>, first_t, std::string>>...>, "All parameters must be the same type");
+			using first_t = nl::detail::first_type_from_list_t<Para...>;
+			static_assert(std::disjunction_v<std::is_convertible<first_t, std::string>,std::is_integral<first_t>>, "Parameters must be either an interger or a string");
+			static_assert(std::conjunction_v<std::is_convertible<Para, std::conditional_t<std::is_integral_v<first_t>, first_t, std::string>>...>, "All parameters must be the same type");
 			constexpr const size_t size = sizeof...(Args) - 1;
+			const std::array<std::reference_wrapper<const first_t>, sizeof...(Para)> parameters{ std::ref(paras)... };
 
-			const std::array<std::conditional_t<std::is_integral_v<first_t>, first_t, std::string> , sizeof...(Para)> parameters{ paras... };
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()) {
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			} 
-			auto [idx, statement] = *iter;
+			auto statement = iter->second;
 			return nl::detail::loop<size>::do_bind_para(statement, data, parameters);
 		}
 
 
 		template<typename row_t, typename...T>
-		bool update(statement_index index, typename row_t& row, T... args)
+		bool update(statement_index index, typename row_t& row, const T&... args)
 		{
 			return do_update_para(index, row, args...);
 		}
@@ -238,10 +239,9 @@ namespace nl
 
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()){
-				m_error_msg = "Invalid statement index";
-				return relation_t{};
+				throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
+			auto statement = iter->second;
 			int ret = 0;
 			if ((ret = sqlite3_step(m_statements[stmt::begin])) == SQLITE_DONE)
 			{
@@ -249,7 +249,7 @@ namespace nl
 				relation_t rel;
 				std::insert_iterator<typename relation_t::container_t> insert(rel, rel.begin());
 				constexpr size_t size = std::tuple_size_v<typename relation_t::tuple_t> -1;
-				while ((sqlite3_step(statement) == SQLITE_ROW))
+				while ((ret = sqlite3_step(statement)) == SQLITE_ROW)
 				{
 					if constexpr (nl::detail::is_map_relation<relation_t>::value)
 					{
@@ -261,28 +261,69 @@ namespace nl
 						back_insert = nl::detail::loop<size>::template do_retrive<typename relation_t::tuple_t>(statement);
 					}
 				}
-				if (sqlite3_errcode(m_database_conn) == SQLITE_DONE)
+				if (ret == SQLITE_BUSY) {
+					//Unable to get lock database
+					std::string error = sqlite3_errmsg(m_database_conn);
+					sqlite3_reset(statement);
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin]);
+					throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+				}
+				else if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+					//error in the statement or statement misuse
+					//finalize the statement
+					//cache the most recent database code
+					std::string error = sqlite3_errmsg(m_database_conn);
+					int code = sqlite3_errcode(m_database_conn);
+
+					//remove faulty statement, the user should get a hint that there is a problem, 
+					sqlite3_finalize(statement);
+					m_statements.erase(iter);
+
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin]);
+					throw nl::database_exception(error, code);
+				} else if (ret == SQLITE_DONE) //query done succefully
 				{
+					//this is important: if the reset fails; there is a problem with the VM, need to at least recompile the 
+					//... statement, so remove and throw a failed reset exeception, 
 					if (sqlite3_reset(statement) != SQLITE_OK) {
-						m_error_msg = sqlite3_errmsg(m_database_conn);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::rollback]);
+						//finalize the statement
+						//cache the error from the reset operation
+						std::string error = sqlite3_errmsg(m_database_conn);
+						
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+						exec_rollback();
 						sqlite3_reset(m_statements[stmt::begin]);
-						return relation_t{};
+						throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
 					}
-					if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE)
-					{
-						sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
-						sqlite3_reset(m_statements[begin]);
-						return std::move(rel);
-					}
-				}	
+					sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]);
+					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
+					sqlite3_reset(m_statements[begin]);
+					return rel;
+					
+				}
+				else {
+					//ret gave us something we arent expecting, very unlikely but an extra branch hopefully wont help
+					std::string error = sqlite3_errmsg(m_database_conn);
+					int code = sqlite3_errcode(m_database_conn);
+
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin]);
+					throw nl::database_exception(error, code);
+				}
+			} else {
+				//error might occur if the database is locked by another connection
+				//throw an exception with the data
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+				exec_rollback();
+				sqlite3_reset(m_statements[stmt::begin]);
+				throw nl::database_exception(error, code);
+				
 			}
-			m_error_msg = sqlite3_errmsg(m_database_conn);
-			sqlite3_step(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::begin]);
-			return relation_t{};
 		}
 
 		template<typename row_t>
@@ -291,25 +332,53 @@ namespace nl
 			constexpr size_t size = std::tuple_size_v<row_t> - 1;
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()) {
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
 			
 			auto [idx, statement] = *iter;
 			if ((sqlite3_step(m_statements[begin])) == SQLITE_DONE)
 			{
 				auto ret = sqlite3_step(statement);
-				if (ret != SQLITE_ERROR){
+				if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+					//error in the statement
+					std::string error = sqlite3_errmsg(m_database_conn);
+					int code = sqlite3_errcode(m_database_conn);
+
+					sqlite3_finalize(statement);
+					m_statements.erase(iter);
+
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin]);
+					throw nl::database_exception(error, code);
+				}
+				else if (ret == SQLITE_BUSY) {
+					//unable to aquire lock on database
+					//roll back the statement
+					std::string error = sqlite3_errmsg(m_database_conn);
+					sqlite3_reset(statement);
+
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin]);
+					throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+
+				}else{ //ret == SQLITE_ROW OR SQLITE_DONE
+					row_t row;
 					if (ret == SQLITE_ROW) {
-						m_error_msg = "More than a single row retrived, ignoring others returning only the first";
+						//we have a row to pick up 
+						row = std::move(nl::detail::loop<size>::template do_retrive<row_t>(statement));
 					}
-					row_t row = nl::detail::loop<size>::template do_retrive<row_t>(statement);
 					if (sqlite3_reset(statement) != SQLITE_OK) {
-						m_error_msg = sqlite3_errmsg(m_database_conn);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::rollback]);
+						//cache return string, 
+						//possibly problem in the VM, remove statement so that the statment can be repared
+						std::string error = sqlite3_errmsg(m_database_conn);
+						int code = sqlite3_errcode(m_database_conn);
+
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+						exec_rollback();
 						sqlite3_reset(m_statements[stmt::begin]);
-						return row_t{};
+						throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
 					}
 					sqlite3_step(m_statements[ roll_back ? stmt::rollback : stmt::end]);
 					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
@@ -317,11 +386,15 @@ namespace nl
 					return row;
 				} 
 			}
-			m_error_msg = sqlite3_errmsg(m_database_conn);
-			sqlite3_step(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::begin]);
-			return row_t{};
+			else{
+				//unable to begin a transaction in shared, most likely busy 
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+				
+				exec_rollback();
+				sqlite3_reset(m_statements[stmt::begin]);
+				throw nl::database_exception(error, code);
+			}
 		}
 
 
@@ -333,110 +406,162 @@ namespace nl
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
 			auto  iter = m_statements.find(index);
 			if (iter == m_statements.end()){
-				m_error_msg = "Invalud statement index";
-				return false;
+				throw nl::database_exception("Invalud statement index", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
-			//loop::do_insert should actually be called do_bind, it binds values to insert statements 
+			auto statement = iter->second;
 			if (sqlite3_step(m_statements[begin_immediate]) == SQLITE_DONE){
 				for (auto& tuple : rel) {
 					if (!nl::detail::loop<size>::do_bind(statement, tuple)) {
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+						//error only happends if we cant bind a particular value to 
+						//... need to finalize and remove the statement, error in the statement
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						int code = sqlite3_errmsg(m_database_conn);
+
 						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(statement);
-						sqlite3_reset(m_statements[stmt::rollback]);
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+
+						exec_rollback();
 						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
+						throw nl::database_exception(error, code);
+						
 					}
-					if (sqlite3_step(statement) == SQLITE_DONE) {
+					int ret = sqlite3_step(statement);
+					if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						int code = sqlite3_errmsg(m_database_conn);
+
+						sqlite3_clear_bindings(statement);
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, code);
+					}
+					else if (ret == SQLITE_BUSY) {
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						sqlite3_reset(statement);
+						sqlite3_clear_bindings(statement);
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+
+					}else if (ret == SQLITE_DONE) {
 							if(sqlite3_reset(statement) != SQLITE_OK) {
-								m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+								std::string error = std::string(sqlite3_errmsg(m_database_conn));
+
 								sqlite3_clear_bindings(statement);
-								sqlite3_step(m_statements[stmt::rollback]);
-								sqlite3_reset(m_statements[stmt::rollback]);
+								sqlite3_finalize(statement);
+								m_statements.erase(iter);
+
+								exec_rollback();
 								sqlite3_reset(m_statements[stmt::begin_immediate]);
-								return false;
+								throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
 							}
 							sqlite3_clear_bindings(statement);
 					}
-					else{
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(statement);
-						sqlite3_reset(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
-					}
 				}
-				if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE) {
-					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
-					sqlite3_reset(m_statements[begin_immediate]);
-					return true;
-				}
-			}
+				sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]);
+				sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
+				sqlite3_reset(m_statements[begin_immediate]);
 
-			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-			sqlite3_step(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::begin_immediate]);
-			return false;
+				//compatability with the api
+				return true;
+				
+			}
+			else {
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+
+				exec_rollback();
+				sqlite3_reset(m_statements[stmt::begin_immediate]);
+				throw nl::database_exception(error, code);
+			}
 		}
 
 		template<typename row_t>
-		bool do_query_insert_row(statement_index index, const row_t & row)
+		bool do_query_insert_row(statement_index index, const row_t& row)
 		{
 			constexpr size_t size = std::tuple_size_v<row_t> -1;
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()){
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATEMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
+			auto statement = iter->second;
+			//bind the data
+			if (!nl::detail::loop<size>::do_bind(statement, row)) {
+				//error only happends if we cant bind a particular value to 
+				//... need to finalize and remove the statement, error in the statement
+				std::string error = std::string(sqlite3_errmsg(m_database_conn));
+				int code = sqlite3_errmsg(m_database_conn);
+
+				sqlite3_clear_bindings(statement);
+				sqlite3_finalize(statement);
+				m_statements.erase(iter);
+				throw nl::database_exception(error, code);
+
+			}
+
 			if (sqlite3_step(m_statements[begin_immediate]) == SQLITE_DONE)
 			{
-				if (!nl::detail::loop<size>::do_bind(statement, row))
-				{
-					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+				int ret = sqlite3_step(statement);
+				if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+					std::string error = std::string(sqlite3_errmsg(m_database_conn));
+					int code = sqlite3_errmsg(m_database_conn);
+
 					sqlite3_clear_bindings(statement);
-					sqlite3_step(m_statements[stmt::rollback]);
-					sqlite3_reset(statement);
-					sqlite3_reset(m_statements[stmt::rollback]);
+					sqlite3_finalize(statement);
+					m_statements.erase(iter);
+
+
+					exec_rollback();
 					sqlite3_reset(m_statements[stmt::begin_immediate]);
-					return false;
+					throw nl::database_exception(error, code);
 				}
-				if (sqlite3_step(statement) == SQLITE_DONE) {
-					if (sqlite3_reset(statement) != SQLITE_OK) {
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+				else if (ret == SQLITE_BUSY) {
+					std::string error = std::string(sqlite3_errmsg(m_database_conn));
+					sqlite3_reset(statement);
+					sqlite3_clear_bindings(statement);
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin_immediate]);
+					throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+
+				}
+				else if (ret == SQLITE_DONE) {
+					if (sqlite3_reset(statement) != SQLITE_OK){
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+
 						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::rollback]);
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+						exec_rollback();
 						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
+						throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
 					}
+
 					sqlite3_clear_bindings(statement);
-				}
-				else {
-					m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-					sqlite3_clear_bindings(statement);
-					sqlite3_step(m_statements[stmt::rollback]);
-					sqlite3_reset(statement);
-					sqlite3_reset(m_statements[stmt::rollback]);
-					sqlite3_reset(m_statements[stmt::begin_immediate]);
-					return false;
-				}
-				if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE) {
+					sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]);
 					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
 					sqlite3_reset(m_statements[begin_immediate]);
+
+					//compatability with the api
 					return true;
+					
 				}
+			} else {
+				//cannot execute begin_immediate, probably because of failed lock aquisation 
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+
+				exec_rollback();
+				sqlite3_reset(m_statements[stmt::begin_immediate]);
+				throw nl::database_exception(error, code);
 			}
-			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-			sqlite3_step(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::begin_immediate]);
-			return false;
+			
 		}
 		
 		inline bool do_query_insert_row(...)
@@ -445,176 +570,270 @@ namespace nl
 			return false;
 		}
 
-		template<typename relation, typename S,  typename... T>
-		bool do_query_insert_para(statement_index index, const relation& rel,const S& start , const T&...args)
+		template<typename relation, typename... T>
+		bool do_query_insert_para(statement_index index, const relation& rel, const T&...args)
 		{
+			using first_para_t = nl::detail::first_type_from_list_t<T...>;
+			static_assert(std::disjunction_v<std::is_convertible<first_para_t, std::string>, std::is_integral<first_para_t>>, "Parameters must be either an interger or a string");
+			static_assert(std::conjunction_v<std::is_convertible<T, std::conditional_t<std::is_integral_v<first_para_t>, first_para_t, std::string>>...>, "All parameters must be the same type");
 			static_assert(nl::detail::is_relation_v<relation>, "relation is not a valid relation type");
-			const std::array<const S, sizeof...(T) + 1> parameters{start, args...};
+
+
+			const std::array<std::reference_wrapper<const first_para_t>, sizeof...(T)> parameters{ std::ref(args)... };
+
 			constexpr size_t size = std::tuple_size_v<typename relation::tuple_t> - 1;
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()){
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
+			auto statement = iter->second;
+			//TODO: the execution of the begin immediate should be close to the execution of the statement, 
+			//the bind do not need an opened transcation
 			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
 			{
-				for (auto& tuple : rel){
-					if (!nl::detail::loop<size>::do_bind_para(statement, tuple, parameters)){
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+				for (auto& tuple : rel) {
+					if (!nl::detail::loop<size>::do_bind(statement, tuple)) {
+						//error only happends if we cant bind a particular value to 
+						//... need to finalize and remove the statement, error in the statement
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						int code = sqlite3_errcode(m_database_conn);
+
 						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(statement);
-						sqlite3_reset(m_statements[stmt::rollback]);
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+
+						exec_rollback();
 						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
+						throw nl::database_exception(error, code);
+
 					}
-					//execute the insert statement
-					if (sqlite3_step(statement) == SQLITE_DONE){
-						if (sqlite3_reset(statement) != SQLITE_OK)
-						{
-							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+					int ret = sqlite3_step(statement);
+					if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						int code = sqlite3_errcode(m_database_conn);
+
+						sqlite3_clear_bindings(statement);
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, code);
+					}
+					else if (ret == SQLITE_BUSY) {
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						sqlite3_reset(statement);
+						sqlite3_clear_bindings(statement);
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+
+					}
+					else if (ret == SQLITE_DONE) {
+						if (sqlite3_reset(statement) != SQLITE_OK) {
+							std::string error = std::string(sqlite3_errmsg(m_database_conn));
+
 							sqlite3_clear_bindings(statement);
-							sqlite3_step(m_statements[stmt::rollback]);
-							sqlite3_reset(m_statements[stmt::rollback]);
+							sqlite3_finalize(statement);
+							m_statements.erase(iter);
+
+							exec_rollback();
 							sqlite3_reset(m_statements[stmt::begin_immediate]);
-							return false;
+							throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
 						}
 						sqlite3_clear_bindings(statement);
-					}else{
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(statement);
-						sqlite3_reset(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
 					}
 				}
-				if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE){
-					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
-					sqlite3_reset(m_statements[stmt::begin_immediate]);
-					return true;
-				}
+				sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]);
+				sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
+				sqlite3_reset(m_statements[begin_immediate]);
+
+				//compatability with the api
+				return true;
+
 			}
-			m_error_msg = sqlite3_errmsg(m_database_conn);
-			sqlite3_step(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::begin_immediate]);
-			return false;
+			else {
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+
+				exec_rollback();
+				sqlite3_reset(m_statements[stmt::begin_immediate]);
+				throw nl::database_exception(error, code);
+			}
 		}
 
-		template<typename row_t, typename S, typename... T>
-		bool do_query_insert_para_row(statement_index index, const row_t& row, const S& start, const T& ...args)
+		template<typename row_t, typename... T>
+		bool do_query_insert_para_row(statement_index index, const row_t& row, const T&...args)
 		{
-			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
+			using first_para_t = nl::detail::first_type_from_list_t<T...>;
+			static_assert(std::disjunction_v<std::is_convertible<first_para_t, std::string>, std::is_integral<first_para_t>>, "Parameters must be either an interger or a string");
+			static_assert(std::conjunction_v<std::is_convertible<T, std::conditional_t<std::is_integral_v<first_para_t>, first_para_t, std::string>>...>, "All parameters must be the same type");
+
+			const std::array<std::reference_wrapper<const first_para_t>, sizeof...(T)> parameters{ std::ref(args)... };
 			constexpr size_t size = std::tuple_size_v<row_t> -1;
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end()){
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
+			auto statement = iter->second;
+			//bind the parameters
+			if (!nl::detail::loop<size>::do_bind_para(statement, row, parameters)) {
+				std::string error = std::string(sqlite3_errmsg(m_database_conn));
+				int code = sqlite3_errcode(m_database_conn);
+
+				sqlite3_clear_bindings(statement);
+				sqlite3_finalize(statement);
+				m_statements.erase(iter);
+				throw nl::database_exception(error, code);
+			}
+
 			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
 			{
-					if (!nl::detail::loop<size>::do_bind_para(statement, row, parameters)) {
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(statement);
-						sqlite3_reset(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
-					}
 					//execute the insert statement
-					if (sqlite3_step(statement) == SQLITE_DONE) {
+					int ret = sqlite3_step(statement);
+					if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+						std::string error = std::string(sqlite3_errmsg(m_database_conn));
+						int code = sqlite3_errcode(m_database_conn);
+
+						sqlite3_clear_bindings(statement);
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, code);
+					}
+					else if (ret == SQLITE_BUSY) {
+						//cannot aquire lock on the database
+						std::string error = sqlite3_errmsg(m_database_conn);
+						int code = sqlite3_errcode(m_database_conn);
+						sqlite3_reset(statement);
+						sqlite3_clear_bindings(statement);
+
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+
+					} else { // ret == SQLITE_DONE
 						if (sqlite3_reset(statement) != SQLITE_OK)
 						{
-							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
+							std::string error  = sqlite3_errmsg(m_database_conn);
 							sqlite3_clear_bindings(statement);
-							sqlite3_step(m_statements[stmt::rollback]);
-							sqlite3_reset(m_statements[stmt::rollback]);
-							sqlite3_reset(m_statements[stmt::begin_immediate]);
-							return false;
-						}
-						sqlite3_clear_bindings(statement);
-					}
-					else {
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-						sqlite3_clear_bindings(statement);
-						sqlite3_step(m_statements[stmt::rollback]);
-						sqlite3_reset(statement);
-						sqlite3_reset(m_statements[stmt::rollback]);
-						sqlite3_reset(m_statements[stmt::begin_immediate]);
-						return false;
-					}
-			}
-			if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE) {
-				sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
-				sqlite3_reset(m_statements[stmt::begin_immediate]);
-				return true;
-			}
 
-			//error that is not caught, hopefully lool i dont know,
-			//might also get an SQLITE_BUSY if a write lock on the database cant be aquired, need to rollback 
-			//but i hope sqlite would set an error
-			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-			sqlite3_step(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::rollback]);
-			sqlite3_reset(m_statements[stmt::begin_immediate]);
-			return false;
+
+							sqlite3_finalize(statement);
+							m_statements.erase(iter);
+
+							exec_rollback();
+							sqlite3_reset(m_statements[stmt::begin_immediate]);
+							throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
+						}
+
+						sqlite3_clear_bindings(statement);
+
+						sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]);
+						sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						return true;
+						
+					}
+			} else { //cannot executute begin_immediate, probably due to a lock
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+
+				exec_rollback();
+				sqlite3_reset(m_statements[stmt::begin_immediate]);
+				throw nl::database_exception(error, code);
+			}
 		}
 
-		template<typename row_t, typename S, typename... T>
-		bool do_update_para(statement_index index, const row_t& row, const S& start, const T&... args)
+		template<typename row_t, typename... T>
+		bool do_update_para(statement_index index, const row_t& row, const T&... args)
 		{
-			const std::array<const S, sizeof...(T) + 1> parameters{ start, args... };
-			constexpr size_t size = std::tuple_size_v<row_t> -1;
+			using first_para_t = nl::detail::first_type_from_list_t<T...>;
+			static_assert(std::disjunction_v<std::is_convertible<first_para_t, std::string>, std::is_integral<first_para_t>>, "Parameters must be either an interger or a string");
+			static_assert(std::conjunction_v<std::is_convertible<T, std::conditional_t<std::is_integral_v<first_para_t>, first_para_t, std::string>>...>, "All parameters must be the same type");
+			const std::array<std::reference_wrapper<const first_para_t>, sizeof...(T)> parameters{ std::ref(args)... };
+			constexpr size_t size = std::tuple_size_v<row_t> - 1;
 
 			auto iter = m_statements.find(index);
 			if (iter == m_statements.end())
 			{
-				m_error_msg = "Invalid statement index";
-				return false;
+				throw nl::database_exception("INVALID STATEMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 			}
-			auto [idx, statement] = *iter;
-			
-			if (nl::detail::loop<size>::template do_bind_para(statement, row, parameters))
+			auto statement = iter->second;
+			//bind the parameters
+			if (!nl::detail::loop<size>::do_bind_para(statement, row, parameters)) {
+				std::string error = std::string(sqlite3_errmsg(m_database_conn));
+				int code = sqlite3_errcode(m_database_conn);
+
+				sqlite3_clear_bindings(statement);
+				sqlite3_finalize(statement);
+				m_statements.erase(iter);
+				throw nl::database_exception(error, code);
+			}
+
+			if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
 			{
-				if (sqlite3_step(m_statements[stmt::begin_immediate]) == SQLITE_DONE)
-				{
-					if (sqlite3_step(statement) == SQLITE_DONE)
-					{
-						if (sqlite3_reset(statement) != SQLITE_OK)
-						{
-							m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-							return false;
-						}
-						sqlite3_clear_bindings(statement);
-					}
-					else {
-						m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-						return false;
-					}
+				//execute the update statement
+				int ret = sqlite3_step(statement);
+				if (ret == SQLITE_ERROR || ret == SQLITE_MISUSE) {
+					std::string error = std::string(sqlite3_errmsg(m_database_conn));
+					int code = sqlite3_errcode(m_database_conn);
+
+					sqlite3_clear_bindings(statement);
+					sqlite3_finalize(statement);
+					m_statements.erase(iter);
+
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin_immediate]);
+					throw nl::database_exception(error, code);
 				}
-				if (sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]) == SQLITE_DONE) {
+				else if (ret == SQLITE_BUSY) {
+					//cannot aquire lock on the database
+					std::string error = sqlite3_errmsg(m_database_conn);
+					int code = sqlite3_errcode(m_database_conn);
+					sqlite3_reset(statement);
+					sqlite3_clear_bindings(statement);
+
+					exec_rollback();
+					sqlite3_reset(m_statements[stmt::begin_immediate]);
+					throw nl::database_exception(error, nl::database_exception::DB_BUSY);
+
+				}
+				else { // ret == SQLITE_DONE
+					if (sqlite3_reset(statement) != SQLITE_OK)
+					{
+						std::string error = sqlite3_errmsg(m_database_conn);
+						sqlite3_clear_bindings(statement);
+
+
+						sqlite3_finalize(statement);
+						m_statements.erase(iter);
+
+						exec_rollback();
+						sqlite3_reset(m_statements[stmt::begin_immediate]);
+						throw nl::database_exception(error, nl::database_exception::DB_STMT_FAILED_RESET);
+					}
+
+					sqlite3_clear_bindings(statement);
+
+					sqlite3_step(m_statements[roll_back ? stmt::rollback : stmt::end]);
 					sqlite3_reset(m_statements[roll_back ? stmt::rollback : stmt::end]);
 					sqlite3_reset(m_statements[stmt::begin_immediate]);
 					return true;
+
 				}
-				m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-				sqlite3_step(m_statements[stmt::rollback]);
-				sqlite3_reset(m_statements[stmt::rollback]);
+			} else { //cannot executute begin_immediate, probably due to a lock
+				std::string error = sqlite3_errmsg(m_database_conn);
+				int code = sqlite3_errcode(m_database_conn);
+
+				exec_rollback();
 				sqlite3_reset(m_statements[stmt::begin_immediate]);
-				return false;
+				throw nl::database_exception(error, code);
 			}
-			//error that is not caught, hopefully lool i dont know,
-			//might also get an SQLITE_BUSY if a write lock on the database cant be aquired 
-			//but i hope sqlite would set an error
-			m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-			sqlite3_clear_bindings(statement);
-			sqlite3_reset(statement);
-			return false;
 		}
 
 	private:

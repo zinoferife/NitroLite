@@ -39,6 +39,16 @@ namespace nl
 			enum {value = (std::is_integral_v<T> || std::is_floating_point_v<T> || std::is_enum_v<T> || index_of<special_types, T>::value >= 0) };
 		};
 
+		template<typename T>
+		std::uint64_t func1(std::reference_wrapper<T>* t);
+		std::uint8_t func1(...);
+
+		template<typename T>
+		struct is_std_ref_type :
+			public std::conditional_t<
+			(sizeof(func1((T*)nullptr)) == sizeof(std::uint64_t)), std::true_type, std::false_type>
+		{};
+
 		
 		//for SQL with ? instead of a parameter
 		template<size_t count, typename database_stmt, typename tuple_t>
@@ -117,18 +127,19 @@ namespace nl
 			constexpr size_t col_id = std::tuple_size_v<tuple_t> - (count + 1);
 			using arg_type = typename std::decay_t<std::tuple_element_t<col_id, tuple_t>>;
 			using array_value_type = typename std::decay_t<typename para_array_t::value_type>;
+			static_assert(is_std_ref_type<array_value_type>::value, "Parameters must be ref wrapped");
 			static_assert(is_database_type<arg_type>::value, "Tuple type is not a valid database type");
 			size_t position = -1;
 			
 			if constexpr (std::is_same_v<array_value_type, std::string> || std::is_convertible_v<array_value_type, std::string>)
 			{
-				const std::string p_name = fmt::format(":{}", array[col_id]);
+				const std::string p_name = fmt::format(":{}", array[col_id].get());
 				position = sqlite3_bind_parameter_index(statement, p_name.c_str());
 				if (position == 0) return false;
 			}
 			else if constexpr (std::is_same_v<array_value_type, size_t> || std::is_convertible_v<array_value_type, size_t>)
 			{
-				position = array[col_id];
+				position = array[col_id].get();
 			}
 
 			if constexpr (std::is_integral_v<arg_type>)
@@ -257,7 +268,7 @@ namespace nl
 					{
 						nl::uuid id;
 						std::copy(val_ptr, val_ptr + size, id.begin());
-						return std::make_tuple(id);
+						return std::make_tuple(std::move(id));
 					}
 				}
 				return std::make_tuple(nl::uuid(boost::uuids::nil_uuid()));
@@ -746,6 +757,9 @@ namespace nl
 		//R is the super class
 		//T is the subclass
 
+		//type traits, TODO: Move all these to the the nl_type_traits file
+		
+
 		template<class R, class T>
 		class is_converatable_to_relation
 		{
@@ -768,7 +782,8 @@ namespace nl
 		struct _derived_from_relation{
 			enum
 			{
-				value = (is_converatable_to_relation<const std::decay_t<T>*, const std::decay_t<R>*>::exisit && !is_converatable_to_relation<const std::decay_t<R>*, void*>::same_type)
+				value = (is_converatable_to_relation<const std::decay_t<T>*, const std::decay_t<R>*>::exisit &&
+				!is_converatable_to_relation<const std::decay_t<R>*, void*>::same_type)
 			};
 		};
 		template<typename T> class has_base_relation { 

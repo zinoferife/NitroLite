@@ -126,6 +126,7 @@ namespace nl
 		query& and_(const std::string_view& condition);
 		query& or_(const std::string_view& condition);
 		query& not_(const std::string_view& condition);
+		query& between(const std::string_view& v1, const  std::string_view& v2);
 
 		query& create_trigger(const std::string_view& trig_name, const std::string_view& table);
 
@@ -133,8 +134,8 @@ namespace nl
 
 		inline query& as() { mQuery << "AS "; }
 
-		inline query& beg_sub_query() { mQuery << "( "; };
-		inline query& end_sub_query() { mQuery << " ) "; };
+		inline query& beg_sub_query() { mQuery << "( "; return *(this); };
+		inline query& end_sub_query() { mQuery << " ) "; return *(this); };
 
 		template<typename...T>
 		query& select(const T&...args)

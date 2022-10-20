@@ -13,11 +13,13 @@ nl::database::database(const std::string_view& database_file)
 :m_database_conn(nullptr){
 	if (database_file.empty()){
 		if (sqlite3_open(nullptr, &m_database_conn) == SQLITE_ERROR){
-			throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN MEMORY DATABASE");
+			throw nl::database_exception("FATAL DATABASE ERROR: CANNOT OPEN MEMORY DATABASE",
+					nl::database_exception::DB_FAILED_TO_CREATE);
 		}
 	}else{
 		if (sqlite3_open(database_file.data(), &m_database_conn) == SQLITE_ERROR){
-			throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE");
+			throw nl::database_exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE",
+					nl::database_exception::DB_FAILED_TO_CREATE);
 		}
 	}
 	//create a begin, begin_immediate, end and rollback statments, 0, 1, 2 and 3 in the m_statments table
@@ -32,7 +34,8 @@ nl::database::database(const std::string_view& database_file)
 nl::database::database(const std::filesystem::path& database_file)
 {
 	if(sqlite3_open(database_file.string().data(), &m_database_conn) == SQLITE_ERROR){
-		throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE");
+		throw nl::database_exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE",
+			nl::database_exception::DB_FAILED_TO_CREATE);
 	}
 	//create a begin, begin_immediate, end and rollback statments, 0, 1, 2 and 3 in the m_statments table
 	query q;
@@ -45,7 +48,7 @@ nl::database::database(const std::filesystem::path& database_file)
 
 
 
-nl::database::database(const database&& connection) noexcept
+nl::database::database(database&& connection) noexcept
 {
 	if (m_database_conn != nullptr){
 		sqlite3_close(m_database_conn);
@@ -55,7 +58,7 @@ nl::database::database(const database&& connection) noexcept
 	m_error_msg = std::move(connection.m_error_msg);
 }
 
-nl::database& nl::database::operator=(const database&& connection) noexcept
+nl::database& nl::database::operator=(database&& connection) noexcept
 {
 	// TODO: insert return statement here
 	if (m_database_conn != nullptr){
@@ -73,7 +76,8 @@ void nl::database::open(const std::filesystem::path& database_file)
 		sqlite3_close(m_database_conn);
 	}
 	if (sqlite3_open(database_file.string().data(), &m_database_conn) == SQLITE_ERROR) {
-			throw std::exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE");
+			throw nl::database_exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE",
+				nl::database_exception::DB_FAILED_TO_CREATE);
 	}
 	//create a begin, begin_immediate, end and rollback statments, 0, 1, 2 and 3 in the m_statments table
 	m_statements.clear();
@@ -98,10 +102,13 @@ nl::database::~database()
 
 nl::database::statement_index nl::database::prepare_query(const std::string& query)
 {
+//#if DEBUG 
 	assert(!query.empty() && "Prepare query is empty");
-	if (!sqlite3_complete(query.c_str())){
-		m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-		return BADSTMT;
+//#end if
+
+	if (!sqlite3_complete(query.c_str())){	
+		throw nl::database_exception(sqlite3_errmsg(m_database_conn),
+				nl::database_exception::DB_STMT_INCOMPLETE);
 	}
 	statement_type statement;
 	const char* tail = nullptr;
@@ -112,13 +119,15 @@ nl::database::statement_index nl::database::prepare_query(const std::string& que
 			return iter->first;
 		}
 		else{
-			m_error_msg = "Could not create query statement, query handle already exist";
 			sqlite3_finalize(statement);
-			return BADSTMT;
+			throw nl::database_exception("Could not create query statement, query handle already exist",
+				nl::database_exception::DB_STMT_ALREADY_EXIST);
 		}
 	}
-	m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-	return BADSTMT;
+	else {
+		//error in spqlite
+		throw nl::database_exception(sqlite3_errmsg(m_database_conn), sqlite3_errcode(m_database_conn));
+	}
 }
 
 nl::database::statement_index nl::database::prepare_query(const nl::query& query)
@@ -176,22 +185,38 @@ bool nl::database::register_extension(const sql_extension_func_aggregate& ext)
 		ext.fUserData, ext.fFunc, ext.fStep, ext.fFinal) == SQLITE_OK);
 }
 
-bool nl::database::connect(const std::string_view& file)
+void nl::database::flush_database()
 {
+	int ret = sqlite3_db_cacheflush(m_database_conn);
+	if (ret != SQLITE_OK) {
+		//throw exception
+		throw nl::database_exception(sqlite3_errmsg(m_database_conn),
+			sqlite3_errcode(m_database_conn));
+	}
+}
+
+void nl::database::connect(const std::string_view& file)
+{
+	if (m_database_conn) {
+		//already holds a connection
+		sqlite3_close(m_database_conn);
+		m_database_conn = nullptr;
+	}
+
 	if (file.empty()) {
+		//opening in memory 
 		if (sqlite3_open(nullptr, &m_database_conn) == SQLITE_ERROR) {
-			m_error_msg = "FATAL ERROR MESSAGE: COULD NOT OPEN DATABSE IN MEMORY";
-			return false;
+			throw nl::database_exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE",
+				nl::database_exception::DB_FAILED_TO_CREATE);
 		}
 	}
 	else {
-		if (m_database_conn == nullptr)
+		if (sqlite3_open(file.data(), &m_database_conn) == SQLITE_ERROR)
 		{
-			return (sqlite3_open(file.data(), &m_database_conn) == SQLITE_ERROR);
+			throw nl::database_exception("FATAL DATABASE ERROR: CANNOT OPEN DATABASE FILE",
+				nl::database_exception::DB_FAILED_TO_CREATE);
 		}
 	}
-	m_error_msg = "DATABASE ALREAY OPENED, CLOSE DATABASE BEFORE CONNECTING TO A DIFFERENT ONE";
-	return false;
 }
 
 void nl::database::cancel()
@@ -200,26 +225,33 @@ void nl::database::cancel()
 	sqlite3_interrupt(m_database_conn);
 }
 
-bool nl::database::exec_once(statement_index index)
+void nl::database::exec_once(statement_index index)
 {
 	auto iter = m_statements.find(index);
 	if (iter == m_statements.end()) {
-		m_error_msg = "Invalid statement index";
-		return false;
+		throw nl::database_exception("INVALID STATMENT INDEX", nl::database_exception::DB_STMT_INVALID);
 	}
 	auto [index_, statement] = *iter;
 	if (statement)
 	{
 		if (sqlite3_step(statement) == SQLITE_DONE){
 			if (sqlite3_reset(statement) == SQLITE_SCHEMA) {
-				m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-				return false;
+				sqlite3_finalize(statement);
+				m_statements.erase(iter);
+				throw nl::database_exception(sqlite3_errmsg(m_database_conn), sqlite3_errcode(m_database_conn));
 			}
-			return true;
 		}
-		m_error_msg = std::string(sqlite3_errmsg(m_database_conn));
-		return false;
+		else {
+			sqlite3_finalize(statement);
+			m_statements.erase(iter);
+			throw nl::database_exception(sqlite3_errmsg(m_database_conn), sqlite3_errcode(m_database_conn));
+		}
 	}
-	return false;
+}
+
+void nl::database::exec_rollback()
+{
+	sqlite3_step(m_statements[stmt::rollback]);
+	sqlite3_reset(m_statements[stmt::rollback]);
 }
 
