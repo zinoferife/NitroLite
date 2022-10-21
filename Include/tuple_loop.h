@@ -131,13 +131,13 @@ namespace nl
 			static_assert(is_database_type<arg_type>::value, "Tuple type is not a valid database type");
 			size_t position = -1;
 			
-			if constexpr (std::is_same_v<array_value_type, std::string> || std::is_convertible_v<array_value_type, std::string>)
+			if constexpr (std::is_convertible_v<typename array_value_type::type, std::string>)
 			{
 				const std::string p_name = fmt::format(":{}", array[col_id].get());
 				position = sqlite3_bind_parameter_index(statement, p_name.c_str());
 				if (position == 0) return false;
 			}
-			else if constexpr (std::is_same_v<array_value_type, size_t> || std::is_convertible_v<array_value_type, size_t>)
+			else if constexpr (std::is_convertible_v<typename array_value_type::type, size_t>)
 			{
 				position = array[col_id].get();
 			}

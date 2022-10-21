@@ -1,9 +1,13 @@
 List of things to do in NitroLite
 1. In database, bind_para, change the string type to string_view and use forwarding references on the parameters,
-so that a move can be done if is an rvalue. Do the same thing for string types in tuple_loop
+so that a move can be done if is an rvalue. Do the same thing for string types in tuple_loop: Done but it doesnt work,
+used reference_wrappers instead and string_literals
 2. Add a new table called the inventory details, this table would hold data associated with the inventory,
 that not all inventories would hold, for instance inventories entries from sales would need to know the recipet
 number and the payment method for the sale as well as a reason string and the rest. 
 3. redo the query to use fmt's buffers instead of string stream
 4. Put exceptions in nitrolite, for the database and all the execption unsafe methods in the library
-5. Multiple instances of PharmaOffice, wxWidget has a nice way to handle this, use this 
+5. Multiple instances of PharmaOffice, wxWidget has a nice way to handle this, use this
+6. Handle_bind has an error where not all paths returns a value, Fix this
+7. Decouple the notification system from the tables, this was a bad design because more and more the need for temp tables
+rather than global tables that hold all the data. 

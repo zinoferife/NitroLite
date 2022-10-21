@@ -127,7 +127,8 @@ namespace nl
 		query& or_(const std::string_view& condition);
 		query& not_(const std::string_view& condition);
 		query& between(const std::string_view& v1, const  std::string_view& v2);
-
+		query& having(const std::string_view& v1);
+		query& groupby(const std::string_view& v1);
 		query& create_trigger(const std::string_view& trig_name, const std::string_view& table);
 
 		inline query& clear() { mQuery.str(std::string()); return (*this); }

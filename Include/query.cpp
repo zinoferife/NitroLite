@@ -151,6 +151,18 @@ query& nl::query::between(const std::string_view& v1, const std::string_view& v2
 	return (*this);
 }
 
+query& nl::query::having(const std::string_view& v1)
+{
+	mQuery << fmt::format("HAVING {} ", v1);
+	return (*this);
+}
+
+query& nl::query::groupby(const std::string_view& v1)
+{
+	mQuery << fmt::format("GROUP BY {}", v1);
+	return (*this);
+}
+
 query& query::create_trigger(const std::string_view& trig_name, const std::string_view& table_name)
 {
 	//not complete, forgot how to write trigger commands 
