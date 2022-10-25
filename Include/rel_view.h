@@ -261,5 +261,19 @@ namespace nl {
 	//translation unit that creates the static?? questions o questions
 	template<typename... args>
 	std::array<std::string_view, sizeof...(args)> rel_view<args...>::col_type_names {(nl::get_type_name<args>())... };
+
+	//good?? or terrible code, 
+	namespace detail {
+		template<typename... Args>
+		std::uint64_t func2(const rel_view<Args...>* t);
+		std::uint8_t func2(...);
+
+		template<typename T>
+		struct is_rel_view :
+			public std::conditional_t<(sizeof(func2((T*)nullptr)) == sizeof(std::uint64_t)), std::true_type, std::false_type>
+		{};
+		template<typename T>
+		constexpr bool is_rel_view_v = is_rel_view<T>::value;
+	}
 	
 }

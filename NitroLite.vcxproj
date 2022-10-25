@@ -183,6 +183,7 @@
     <ClInclude Include="Include\tuple_t_operations.h" />
     <ClInclude Include="Include\nl_types.h" />
     <ClInclude Include="Include\Visitor.h" />
+    <ClInclude Include="nl_thread_safe_queue.h" />
     <ClInclude Include="nl_visitor.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>

@@ -11,3 +11,4 @@ number and the payment method for the sale as well as a reason string and the re
 6. Handle_bind has an error where not all paths returns a value, Fix this
 7. Decouple the notification system from the tables, this was a bad design because more and more the need for temp tables
 rather than global tables that hold all the data. 
+8. derive type_error from std::logic_error for type mismatch in relations, so that they throw exceptions rather than returning default constructed objects

@@ -81,6 +81,9 @@
     <ClInclude Include="Include\nl_database_exception.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="nl_thread_safe_queue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
